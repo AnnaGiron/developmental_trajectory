@@ -45,12 +45,6 @@ dataImport_Adolescent <- function(dataFile ="data/BanditData.json", demographics
     id<-rep(as.numeric(subd$uid), length(x))
     #age
     age_years<-rep(as.numeric(subdata$age), length(x))
-    #demo_age = demo[demo$subject==id[1],]$age
-    #if(length(demo_age)!=0) {
-    #  if(age_years[1]!=demo_age) {
-    #    print(sprintf('ID: %s, BanditData: %s, Demographics: %s', id[1], age_years[1], demo_age))
-    #  }
-    #}
     if(id[1] %in% ids_age) {
       age_years = rep(demo[demo$subject==id[1],]$age, length(x))
     }
@@ -62,13 +56,6 @@ dataImport_Adolescent <- function(dataFile ="data/BanditData.json", demographics
     #gender
     gender <- subdata$gender
     gender = rep(gender, length(x))
-    #demo_gender = demo[demo$subject==id[1],]$sex
-    #if(length(demo_gender)!=0) {
-    #  demo_gender = if (demo_gender == 'Maennlich') 'Male' else 'Female'
-    #  if(gender[1]!=demo_gender) {
-    #    print(sprintf('ID: %s, BanditData: %s, Demographics: %s', id[1], gender, demo_gender))
-    #  }
-    #}
     
     #grade
     grade <- subdata$grade
@@ -143,8 +130,8 @@ cohensd.ci <- function(d, n1, n2, ci = 0.95) {
 
 #############################################################################################################################
 # data from Schulz et al. (2019)
+# cf https://github.com/ericschulz/kwg/blob/master/C_Code/C1behavioraltests.R
 dataImport_Schulz = function(datafile='data/kwg_Schulz.json', writecsv=FALSE) {
-  # cf https://github.com/ericschulz/kwg/blob/master/C_Code/C1behavioraltests.R
   #read in data
   myjson<-fromJSON(datafile)
   
@@ -230,7 +217,7 @@ dataImport_Schulz = function(datafile='data/kwg_Schulz.json', writecsv=FALSE) {
   #new ids so they match the model comparison results
   ids<-1:160
   uids<-unique(dat$id)
-
+  
   for (i in 1:nrow(dat)){
     dat$id[i]<-ids[match(dat$id[i], uids)]
   }
@@ -251,64 +238,64 @@ dataImport = function(writecsv=FALSE, bothConds=FALSE) {
   # d <- dataImport_Adolescent()
   # import preprocessed data
   dA = read.csv('data/AdolescentGrid.csv')
-
+  
   # exclude training round and bonus round from analysis
   dA = subset(dA, !round==1 & !round==10)
-
+  
   dA$experiment = 'Adolescent'
   dA$age_months = dA$age_years*12
   dA$condition = 'Smooth'
-
+  
   # total duration
   dDuration = data.frame()
   for (i in unique(dA$id)) {
     subd = subset(dA, id==i)
-
+    
     start = head(subd$time, n=1)
     end = tail(subd$time, n=1)
-
+    
     cur = data.frame(id=i, duration=(end-start)/60000) # time in minutes
     dDuration = rbind(dDuration, cur)
   }
-
+  
   # include duration per round in data frame
   dA = merge(dA, dDuration, by='id')
-
-
+  
+  
   # Schulz et al. (2019)
   # training and bonus round are already excluded
   #dS = dataImport_Schulz()
   dS = read.csv('data/kwgdata_Schulz.csv')
-
+  
   dS$experiment = 'Schulz (2019)'
   dS$age_months = dS$age*12
-
+  
   # total duration
   dDuration = data.frame()
   for (i in unique(dS$id)) {
     subd = subset(dS, id==i)
-
+    
     start = head(subd$time, n=1)
     end = tail(subd$time, n=1)
-
+    
     cur = data.frame(id=i, duration=(end-start)/60000) # time in minutes
     dDuration = rbind(dDuration, cur)
   }
-
+  
   # include duration per round in data frame
   dS = merge(dS, dDuration, by='id')
-
-
+  
+  
   # Meder et al. (in press)
   dM = read.csv('data/ykwgdata_Meder.csv')
-
+  
   # exclude training round and bonus round from analysis
   # exclude rough environments
   dM = subset(dM, !round==1 & !round==6)
-
+  
   dM$experiment = 'Meder (2021)'
   dM$time = NA
-
+  
   # combine data frames
   # use ongoing id to separate participants
   dSId = unique(dS$id)
@@ -316,30 +303,30 @@ dataImport = function(writecsv=FALSE, bothConds=FALSE) {
   for (i in 1:nrow(dS)) {
     dS$id[i] = dSIdNew[match(dS$id[i], dSId)]
   }
-
+  
   dMId = unique(dM$id)
   dMIdNew = (tail(unique(dS$id),n=1)+1) : (tail(unique(dS$id),n=1)+length(dMId))
   for (i in 1:nrow(dM)) {
     dM$id[i] = dMIdNew[match(dM$id[i], dMId)]
   }
-
+  
   # drop unused columns that are not available in all data frames
   dA = dA[, !(names(dA) %in% c('grade'))]
   dS = dS[, !(names(dS) %in% c('agegroup'))]
   dM = dM[, !(names(dM) %in% c('grade', 'cond', 'agegroup', 'agegroup2'))]
-
+  
   dS = dS %>% rename(age_years = age,
                      condition = cond)
   dM = dM %>% rename(condition = Condition)
   dM$gender = mapvalues(dM$gender, from = c('female', 'male'), to = c('Female', 'Male'))
-
+  
   d = rbind(dA, dS, dM)
   
   if (bothConds==FALSE) {
     # only smooth condition
     d = subset(d, condition=='Smooth')
   }
-
+  
   # bin data by age
   # set up cut-off values 
   breaks <- c(5, 7, 9, 11, 14, 18, 25, 55)
@@ -350,8 +337,8 @@ dataImport = function(writecsv=FALSE, bothConds=FALSE) {
                     breaks=breaks, 
                     include.lowest=TRUE, 
                     right=FALSE)
-
-
+  
+  
   # save complete data frame
   if (writecsv == TRUE) {
     write.table(d, file="data/behavioralData.csv", sep=",", row.names = F)
@@ -550,7 +537,7 @@ paramsImport = function(writecsv=FALSE) {
   
   # paramsAdolescents = read.csv('modelResults/paramEstimates_Adolescents.csv')
   # paramsAdolescents = paramsAdolescents[, !names(paramsAdolescents) %in% c('X')]
-
+  
   
   # data from Schulz et al. (2019)
   # GP-UCB
@@ -578,7 +565,7 @@ paramsImport = function(writecsv=FALSE) {
   paramsSchulzGPGV$beta = NA
   paramsSchulzGPGV$kernel = 'RBF'
   paramsSchulzGPGV$acq = 'GV'
-
+  
   # BMT-UCB
   paramsSchulzBMT = read.csv('data/bmt_Schulz.csv')
   paramsSchulzBMT$r2 = (1-paramsSchulzBMT$X.2/(-25*log(1/64)))
@@ -605,7 +592,7 @@ paramsImport = function(writecsv=FALSE) {
   paramsSchulzBMTGV$beta = NA
   paramsSchulzBMTGV$kernel = 'BMT'
   paramsSchulzBMTGV$acq = 'GV'
-
+  
   # combine datasets
   paramsSchulz = rbind(paramsSchulzGP, paramsSchulzGPGM, paramsSchulzGPGV,
                        paramsSchulzBMT, paramsSchulzBMTGM, paramsSchulzBMTGV)
@@ -632,15 +619,15 @@ paramsImport = function(writecsv=FALSE) {
   meanParamsSchulz$age_months = NA
   meanParamsSchulz$experiment = 'Schulz (2019)'
   meanParamsSchulz$epsilon = NA
-
-
+  
+  
   # data from Meder et al. (2021)
   paramsMeder = read.csv('data/modelFit_Meder.csv')
   paramsMeder = paramsMeder %>% dplyr::rename(id = participant, condition = environment)
   paramsMeder = subset(paramsMeder, acq!='Counts')
   paramsMeder$experiment = 'Meder (2021)'
   paramsMeder$epsilon = NA
-
+  
   
   # use ongoing id
   SchulzId = unique(meanParamsSchulz$id)
@@ -648,20 +635,20 @@ paramsImport = function(writecsv=FALSE) {
   for (i in 1:nrow(meanParamsSchulz)) {
     meanParamsSchulz$id[i] = SchulzIdNew[match(meanParamsSchulz$id[i], SchulzId)]
   }
-
+  
   MederId = unique(paramsMeder$id)
   MederIdNew = (tail(unique(meanParamsSchulz$id),n=1)+1) : (tail(unique(meanParamsSchulz$id),n=1)+length(MederId))
   for (i in 1:nrow(paramsMeder)) {
     paramsMeder$id[i] = MederIdNew[match(paramsMeder$id[i], MederId)]
   }
-
-
+  
+  
   # combine data
   keep = c('id', 'age_years', 'age_months', 'kernel', 'R2', 'nLL', 'kError', 'lambda', 'beta', 'tau', 'epsilon', 'experiment', 'condition', 'acq')
   meanParamsNew = meanParamsNew[, (names(meanParamsNew) %in% keep)]
   meanParamsSchulz = meanParamsSchulz[, (names(meanParamsSchulz) %in% keep)]
   paramsMeder = paramsMeder[, (names(paramsMeder) %in% keep)]
-
+  
   params = rbind(meanParamsNew, meanParamsSchulz, paramsMeder)
   
   params = subset(params, condition=='Smooth')
@@ -677,7 +664,7 @@ paramsImport = function(writecsv=FALSE) {
                          breaks=breaks, 
                          include.lowest=TRUE, 
                          right=FALSE)
-
+  
   # save complete data frame
   if (writecsv == TRUE) {
     write.table(params, file="data/modelFit.csv", sep=",", row.names = F)
@@ -710,3 +697,162 @@ paramsYoungestAgegroup = function(writecsv = FALSE) {
     write.table(params, file="data/paramsYoungestAgegroup.csv", sep=",", row.names = F)
   }
 }
+
+
+
+#### New function that keeps the original IDs so i can later find matching environments for recovery analyses
+# imports and combines parameter estimated from all experiments
+paramsImportOriginalId = function(writecsv=FALSE) {
+  # adolescent data
+  
+  # # behavioral data
+  # # data<-dataImport()
+  # # import preprocessed data
+  # data = read.csv('data/AdolescentGrid.csv')
+  # 
+  # # Read results from CSV files
+  # modelResults <- importModelResults(dataFolder = 'modelResults/batch1/', kernels = c("BMT", "RBF"), acqFuncs = c("UCB", "GM", "GV"))
+  # 
+  # #separate into overall per participant and individual cross validation blocks
+  # modelFit <- modelResults[[1]]
+  # paramEstimates <- modelResults[[2]]
+  # 
+  # #reorder acqisition function levels and add "ModelName" to identify unique models
+  # modelFit$acq <-factor(modelFit$acq)
+  # modelFit$ModelName <- paste(modelFit$kernel,modelFit$acq, sep = "-")
+  # modelFit$ModelName <- factor(modelFit$ModelName)
+  # 
+  # # add age in months and years to modelFit df
+  # subData   <- data[!duplicated(data$id), ]
+  # modelFit  <- left_join(modelFit, subData[c('id', 'age_years', 'gender')], by="id")
+  # 
+  # #SAVE MODEL RESULTS TO DISK
+  # write.csv(modelFit,'data/modelFit_Adolescents.csv')
+  # write.csv(paramEstimates,'modelResults/paramEstimates_Adolescents.csv')
+  
+  meanParamsAdolescents = read.csv('data/modelFit_Adolescents.csv')
+  meanParamsAdolescents$age_months = meanParamsAdolescents$age_years * 12
+  meanParamsAdolescents$experiment = 'Adolescents'
+  meanParamsAdolescents$condition = 'Smooth'
+  
+  # paramsAdolescents = read.csv('modelResults/paramEstimates_Adolescents.csv')
+  # paramsAdolescents = paramsAdolescents[, !names(paramsAdolescents) %in% c('X')]
+  
+  
+  # data from Schulz et al. (2019)
+  # GP-UCB
+  paramsSchulzGP = read.csv('data/rbfucb_Schulz.csv')
+  paramsSchulzGP = paramsSchulzGP %>% rename(lambda = par1, beta = par2, tau = par3, leaveoutindex = X.1, nLL = X.2)
+  paramsSchulzGP = paramsSchulzGP[, !(names(paramsSchulzGP) %in% c('X', 'X.3'))]
+  paramsSchulzGP$kError = NA
+  paramsSchulzGP$kernel = 'RBF'
+  paramsSchulzGP$acq = 'UCB'
+  
+  # GP-GM
+  paramsSchulzGPGM = read.csv('data/rbfgreedymean_Schulz.csv')
+  paramsSchulzGPGM = paramsSchulzGPGM %>% rename(lambda = par1, tau = par3, leaveoutindex = X.1, nLL = X.2)
+  paramsSchulzGPGM = paramsSchulzGPGM[, !(names(paramsSchulzGPGM) %in% c('X', 'X.3', 'par2'))]
+  paramsSchulzGPGM$kError = NA
+  paramsSchulzGPGM$beta = NA
+  paramsSchulzGPGM$kernel = 'RBF'
+  paramsSchulzGPGM$acq = 'GM'
+  
+  # GP-GV
+  paramsSchulzGPGV = read.csv('data/rbfgreedyvariance_Schulz.csv')
+  paramsSchulzGPGV = paramsSchulzGPGV %>% rename(lambda = par1, tau = par3, leaveoutindex = X.1, nLL = X.2)
+  paramsSchulzGPGV = paramsSchulzGPGV[, !(names(paramsSchulzGPGV) %in% c('X', 'X.3', 'par2'))]
+  paramsSchulzGPGV$kError = NA
+  paramsSchulzGPGV$beta = NA
+  paramsSchulzGPGV$kernel = 'RBF'
+  paramsSchulzGPGV$acq = 'GV'
+  
+  # BMT-UCB
+  paramsSchulzBMT = read.csv('data/bmt_Schulz.csv')
+  paramsSchulzBMT$r2 = (1-paramsSchulzBMT$X.2/(-25*log(1/64)))
+  paramsSchulzBMT = paramsSchulzBMT %>% rename(kError = par1, beta = par2, tau = par3, leaveoutindex = X.1, nLL = X.2)
+  paramsSchulzBMT = paramsSchulzBMT[, !(names(paramsSchulzBMT) %in% c('X', 'X.3'))]
+  paramsSchulzBMT$lambda = NA
+  paramsSchulzBMT$kernel = 'BMT'
+  paramsSchulzBMT$acq = 'UCB'
+  
+  # BMT-GM
+  paramsSchulzBMTGM = read.csv('data/mtgreedymean_Schulz.csv')
+  paramsSchulzBMTGM = paramsSchulzBMTGM %>% rename(kError = par1, tau = par3, leaveoutindex = X.1, nLL = X.2)
+  paramsSchulzBMTGM = paramsSchulzBMTGM[, !(names(paramsSchulzBMTGM) %in% c('X', 'X.3', 'par2'))]
+  paramsSchulzBMTGM$lambda = NA
+  paramsSchulzBMTGM$beta = NA
+  paramsSchulzBMTGM$kernel = 'BMT'
+  paramsSchulzBMTGM$acq = 'GM'
+  
+  # BMT-GV
+  paramsSchulzBMTGV = read.csv('data/mtgreedyvariance_Schulz.csv')
+  paramsSchulzBMTGV = paramsSchulzBMTGV %>% rename(kError = par1, tau = par3,leaveoutindex = X.1, nLL = X.2)
+  paramsSchulzBMTGV = paramsSchulzBMTGV[, !(names(paramsSchulzBMTGV) %in% c('X', 'X.3', 'par2'))]
+  paramsSchulzBMTGV$lambda = NA
+  paramsSchulzBMTGV$beta = NA
+  paramsSchulzBMTGV$kernel = 'BMT'
+  paramsSchulzBMTGV$acq = 'GV'
+  
+  # combine datasets
+  paramsSchulz = rbind(paramsSchulzGP, paramsSchulzGPGM, paramsSchulzGPGV,
+                       paramsSchulzBMT, paramsSchulzBMTGM, paramsSchulzBMTGV)
+  
+  paramsSchulz$lambda = exp(paramsSchulz$lambda)
+  paramsSchulz$kError = exp(paramsSchulz$kError)
+  paramsSchulz$beta = exp(paramsSchulz$beta)
+  paramsSchulz$tau = exp(paramsSchulz$tau)
+  
+  # mean parameter estimates
+  meanParamsSchulz = ddply(paramsSchulz, ~id+kernel+acq, plyr::summarize, R2=mean(r2), nLL=sum(nLL), lambda=mean(lambda),
+                           kError=mean(kError), beta=mean(beta), tau=mean(tau))
+  
+  # include demographic information
+  dataSchulz = read.csv('data/kwgdata_Schulz.csv')
+  meanParamsSchulz$condition = 0
+  meanParamsSchulz$age_years = 0
+  meanParamsSchulz$gender = 0
+  for (i in 1:nrow(meanParamsSchulz)){
+    meanParamsSchulz$condition[i] = dataSchulz$cond[which(meanParamsSchulz$id[i]==dataSchulz$id)[1]]
+    meanParamsSchulz$age_years[i] = dataSchulz$age[which(meanParamsSchulz$id[i]==dataSchulz$id)[1]]
+    meanParamsSchulz$gender[i] = dataSchulz$gender[which(meanParamsSchulz$id[i]==dataSchulz$id)[1]]
+  }
+  meanParamsSchulz$age_months = meanParamsSchulz$age_years * 12
+  meanParamsSchulz$experiment = 'Schulz (2019)'
+  
+  
+  # data from Meder et al. (2021)
+  paramsMeder = read.csv('data/modelFit_Meder.csv')
+  paramsMeder = paramsMeder %>% rename(id = participant, condition = environment)
+  paramsMeder = subset(paramsMeder, acq!='Counts')
+  paramsMeder$experiment = 'Meder (2021)'
+
+  
+  # combine data
+  keep = c('id', 'age_years', 'age_months', 'kernel', 'R2', 'nLL', 'kError', 'lambda', 'beta', 'tau', 'experiment', 'condition', 'acq')
+  meanParamsAdolescents = meanParamsAdolescents[, (names(meanParamsAdolescents) %in% keep)]
+  meanParamsSchulz = meanParamsSchulz[, (names(meanParamsSchulz) %in% keep)]
+  paramsMeder = paramsMeder[, (names(paramsMeder) %in% keep)]
+  
+  conditionRS=c("Rough","Smooth")# coded as 1, 2 in schulz
+  meanParamsSchulz<-meanParamsSchulz%>%mutate(condition=conditionRS[condition])
+  params = rbind(meanParamsAdolescents, meanParamsSchulz, paramsMeder)
+  params = subset(params, condition=='Smooth')
+  
+  # bin data by age
+  # set up cut-off values 
+  breaks <- c(5, 7, 9, 11, 14, 18, 25, 55)
+  
+  # bucketing values into bins
+  params$agegroup <- cut(params$age_months/12,
+                         breaks=breaks, 
+                         include.lowest=TRUE, 
+                         right=FALSE)
+  
+  # save complete data frame
+  if (writecsv == TRUE) {
+    write.table(params, file="data/modelFit_OriginalID.csv", sep=",", row.names = F)
+  }
+  
+  return(params)
+}
+
