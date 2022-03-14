@@ -1,0 +1,354 @@
+---
+title: "Model_Recov"
+author: "Simon"
+date: "26/10/2021"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+
+pacman::p_load("tidyverse","viridis","sjPlot","BayesFactor")
+
+```
+
+## Models
+
+This file checks if models could recover. We simulated choices for all subjects from the fitted data.
+Directories may change becaue i try to make everything consistent without breaking stuff. 
+
+```{r adolescents}
+#kernelnames<-c("GP", "BMT")
+#names of all acquisition functions
+#acqnames<-c("GM", "EG", 'UCB')
+RBF_UCB<-NULL
+BMT_UCB<-NULL
+RBF_GM<-NULL
+RBF_EG<-NULL
+newModels=c("BMT-UCB","RBF-UCB","RBF-GM","RBF-EG")
+newModelList=list()
+
+#newModelList[[1]]=list(rbf,ucb,"RBF","UCB")
+#newModelList[[2]]=list(rbf,greedyMean,"RBF","GM")
+#newModelList[[3]]=list(rbf,epsilonGreedy,"RBF","EG")
+#newModelList[[4]]=list(bayesianMeanTracker,ucb,"BMT","UCB")
+####
+#### This was a bug! I mixed up the models when saving the files.
+#### 
+actualModels=c("RBF-UCB","RBF-GM","RBF-EG","BMT-UCB")
+
+WhichPrefix<-c("","Meder","Schulz")
+#for (i in 1:3){
+i=1
+for (prefix in WhichPrefix){
+  #that is because i made an error
+  if(prefix=="Meder"){
+    suffix="_data" # another bug. accidentally saved the wrong datafiles i have been all over the place
+  }else{
+    suffix=""
+  }
+  
+  RBF_UCB<-rbind(RBF_UCB,list.files(path = "./modelRecovery/modelRecovery/", pattern = paste0("*BMT-UCB_",i,suffix,".rds"))%>%
+                   Filter(function(x){str_detect(x,paste0("^",prefix))},.)%>%#check which experiment
+                   purrr::map(~ readRDS(paste0("./modelRecovery/modelRecovery/",.x)))%>%
+                   do.call("rbind",.)%>%
+                   mutate(simModel="RBF-UCB",
+                          id=as.numeric(paste0(uid,i)),
+                          exp=prefix))
+  
+  RBF_GM<-rbind(RBF_GM,list.files(path = "./modelRecovery/modelRecovery/", pattern = paste0("*RBF-UCB_",i,suffix,".rds"))%>%
+                  Filter(function(x){str_detect(x,paste0("^",prefix))},.)%>%#check which experiment
+                  purrr::map(~ readRDS(paste0("./modelRecovery/modelRecovery/",.x)))%>%
+                  do.call("rbind",.)%>%
+                  mutate(simModel="RBF-GM",id=as.numeric(paste0(uid,i)),exp=prefix))
+  
+  RBF_EG<-rbind(RBF_EG,list.files(path = "./modelRecovery/modelRecovery/",pattern = paste0("*RBF-GM_",i,suffix,".rds"))%>%
+                  Filter(function(x){str_detect(x,paste0("^",prefix))},.)%>%#check which experiment
+                  purrr::map(~ readRDS(paste0("./modelRecovery/modelRecovery/",.x)))%>%
+                  do.call("rbind",.)%>%mutate(simModel="RBF-EG",id=as.numeric(paste0(uid,i)),exp=prefix
+                  ))
+  
+  BMT_UCB<-rbind(BMT_UCB,list.files(path = "./modelRecovery/modelRecovery/",pattern = paste0("*RBF-EG_",i,suffix,".rds"))%>%
+                   Filter(function(x){str_detect(x,paste0("^",prefix))},.)%>%#check which experiment
+                   purrr::map(~ readRDS(paste0("./modelRecovery/modelRecovery/",.x)))%>%
+                   do.call("rbind",.)%>%mutate(simModel="BMT-UCB",id=as.numeric(paste0(uid,i)),exp=prefix))
+  
+}
+#}
+
+#list.files(path = "./modelRecovery/modelRecovery/", pattern = paste0("*BMT-UCB_",i,".rds"))
+
+#list.files(path = "./modelRecovery/",pattern = "*Kernel1_Aqui_3_1.rds")
+```
+
+#compute which model was best
+
+```{r}
+RecoveryDF<-rbind(RBF_UCB,BMT_UCB,RBF_GM,RBF_EG)%>%
+  #filter(exp!="Meder")%>%
+  rowwise()%>%
+  dplyr::mutate(fitModel=paste0(kernel,"-",aq))%>%
+  #filter(fitModel=="RBF_UCB"|fitModel=="BMT_UCB")%>%
+  dplyr::group_by(uid,fitModel,simModel,V1)%>%
+  dplyr::mutate(n=n())%>%
+  select(-c(value,name))%>%
+  unique()%>%
+  dplyr::group_by(uid,fitModel,simModel)%>%
+  #SC: we dont compoute the BIC mutate(BIC=log(25*10)*n+2*V2)%>%#25*8= one trial had 25 choices, 8 for each CV round we
+  dplyr::summarise(m=sum(V2))%>%
+  #arrange(simModel,uid)%>%#filter(simModel=="RBF_UCB")%>%
+  dplyr::group_by(uid,simModel)%>%
+  dplyr::mutate(modelBest=ifelse(m==min(m),1,0))%>%
+  dplyr::group_by(fitModel,simModel)%>%
+  dplyr::summarise(meanB=mean(modelBest))%>%ungroup()
+
+#RecoveryDF%
+```
+
+## plot
+
+```{r}
+RecoveryDF%>%
+  ggplot(aes(x=simModel,y=fitModel,fill=meanB))+
+  geom_tile()+
+  geom_text(aes(label = round(meanB, 2)))+
+  scale_fill_viridis(name="p(fit|gen)")+
+  theme_blank(14)+
+  scale_x_discrete(name="generative model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+  scale_y_discrete(name="fitted model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+  theme(aspect.ratio = 1)->confMAll
+```
+
+
+```{r}
+InversionMatrix<-NULL
+# compute probability that a model fits best given it generated the data
+for (i in unique(RecoveryDF$fitModel)){
+  subset=RecoveryDF[RecoveryDF$fitModel==i,]
+  subset$inversionProb=99
+  for (j in unique(RecoveryDF$simModel)){
+    #devide model of interests best fit by the columnsum. (Bayes theorem)
+    subset[subset$simModel==j,]$inversionProb=(subset[subset$simModel==j,]$meanB)/sum(subset$meanB)
+  }
+  InversionMatrix=rbind(InversionMatrix,subset)
+}
+
+InversionMatrix%>%rowwise()%>%mutate(inversionProb=case_when(is.na(inversionProb)~0,
+                                                             TRUE~inversionProb)
+)%>%
+  ggplot(aes(x=simModel,y=fitModel,fill=inversionProb))+
+  geom_tile()+
+  geom_text(aes(label = round(inversionProb, 2)))+
+  scale_fill_viridis(name="p(gen|fit)",option="plasma")+
+  scale_x_discrete(name="generative model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+  scale_y_discrete(name="fitted model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+  theme_blank(14)+
+  theme(aspect.ratio = 1)->invMAll
+```
+
+# All experiments
+```{r fig.width=10, fig.height=5}
+matrix<-cowplot::plot_grid(confMAll,invMAll,labels=c("a","b"))
+matrix
+
+ggsave(matrix,filename = "X_Figures/Confusion_InversionAll.pdf",width = 10,height = 5)
+```
+
+# Model recovery only GP & BMT but by experiment.
+
+#compute which model was best
+
+```{r}
+conf_ByExp<-list()
+inv_ByExp<-list()
+
+experiments=c("Adolescent Data","Meder et al. (2021)","Schulz et al. (2019)")
+for (cnt in 1:length(experiments)){
+  RecoveryDF<-rbind(RBF_UCB,BMT_UCB,RBF_GM,RBF_EG)%>%mutate(exp=case_when(exp==""~experiments[1],
+                                                                          exp=="Meder"~experiments[2],
+                                                                          exp=="Schulz"~experiments[3]))%>%
+    filter(exp==experiments[cnt])%>%
+    rowwise()%>%
+    dplyr::mutate(fitModel=paste0(kernel,"-",aq))%>%
+    #filter(fitModel=="RBF_UCB"|fitModel=="BMT_UCB")%>%
+    dplyr::group_by(uid,fitModel,simModel,V1)%>%
+    dplyr::mutate(n=n())%>%
+    select(-c(value,name))%>%
+    unique()%>%
+    dplyr::group_by(uid,fitModel,simModel)%>%
+    #SC: we dont compoute the BIC mutate(BIC=log(25*10)*n+2*V2)%>%#25*8= one trial had 25 choices, 8 for each CV round we
+    dplyr::summarise(m=sum(V2))%>%
+    #arrange(simModel,uid)%>%#filter(simModel=="RBF_UCB")%>%
+    dplyr::group_by(uid,simModel)%>%
+    dplyr::mutate(modelBest=ifelse(m==min(m),1,0))%>%
+    dplyr::group_by(fitModel,simModel)%>%
+    dplyr::summarise(meanB=mean(modelBest))%>%ungroup()
+  
+  RecoveryDF%>%
+    ggplot(aes(x=simModel,y=fitModel,fill=meanB))+
+    geom_tile()+
+    geom_text(aes(label = round(meanB, 2)))+
+    scale_fill_viridis(name="p(fit|gen)",limits=c(0,1))+
+    scale_x_discrete(name="generative model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+    scale_y_discrete(name="fitted model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+  
+    theme_blank(14)+
+    theme(aspect.ratio = 1)->confM
+  
+  InversionMatrix<-NULL
+  # compute probability that a model fits best given it generated the data
+  for (i in unique(RecoveryDF$fitModel)){
+    subset=RecoveryDF[RecoveryDF$fitModel==i,]
+    subset$inversionProb=99
+    for (j in unique(RecoveryDF$simModel)){
+      #devide model of interests best fit by the columnsum. (Bayes theorem)
+      subset[subset$simModel==j,]$inversionProb=(subset[subset$simModel==j,]$meanB)/sum(subset$meanB)
+    }
+    InversionMatrix=rbind(InversionMatrix,subset)
+  }
+  
+  InversionMatrix%>%rowwise()%>%mutate(inversionProb=case_when(is.na(inversionProb)~0,
+                                                               TRUE~inversionProb)
+  )%>%
+    ggplot(aes(x=simModel,y=fitModel,fill=inversionProb))+
+    geom_tile()+
+    geom_text(aes(label = round(inversionProb, 2)))+
+    scale_fill_viridis(name="p(gen|fit)",option="plasma",limits=c(0,1))+
+    theme_blank(14)+
+    scale_x_discrete(name="generative model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+    scale_y_discrete(name="fitted model",breaks=c("RBF-UCB","RBF-GM","BMT-UCB","RBF-EG"),labels = expression('GP-UCB', lambda*' lesion', beta* ' lesion', tau*' lesion'))+
+    theme(aspect.ratio = 1)->invM
+  
+  #print(i)
+  conf_ByExp[[cnt]]<-confM
+  inv_ByExp[[cnt]]<-invM
+}
+
+confLeg<-get_legend(conf_ByExp[[1]]+theme_classic(10)+theme(legend.position = c(0.5,0.6)))
+invLeg<-get_legend(inv_ByExp[[1]]+theme_classic(10)+theme(legend.position = c(0.5,0.6)))
+
+```
+
+# join figure
+
+```{r}
+library(gridExtra)
+library(grid)
+#make plowtwise y axis labels
+
+row1<-cowplot::plot_grid(confMAll+theme(legend.position="none",axis.title.x = element_text(color="white")),invMAll+theme(legend.position="none"),nrow=2,rel_heights = c(1,1),labels=c("",""))
+row1tit<-grid.arrange(arrangeGrob(row1, top = textGrob(label='All dataasets',hjust = 0.2,gp = gpar(col = "black", fontsize = 16))))
+
+row2<-cowplot::plot_grid(conf_ByExp[[1]]+theme(legend.position="none",axis.title.y = element_text(color="white"),axis.title.x = element_text(color="white")),inv_ByExp[[1]]+theme(legend.position="none",axis.title.y = element_text(color="white")),nrow=2,rel_heights = c(1,1),labels=c("",""))
+row2tit<-grid.arrange(arrangeGrob(row2, top = textGrob(label='Adolescent data',hjust = 0.2,gp = gpar(col = "black", fontsize = 16))))
+
+row3<-cowplot::plot_grid(conf_ByExp[[2]]+theme(legend.position="none",axis.title.y = element_text(color="white"),axis.title.x = element_text(color="white")),inv_ByExp[[2]]+theme(legend.position="none",axis.title.y = element_text(color="white")),nrow=2,rel_heights = c(1,1),labels=c("",""))
+row3tit<-grid.arrange(arrangeGrob(row3, top = textGrob(label='Meder et al (2021)',hjust = 0.2,gp = gpar(col = "black", fontsize = 16))))
+
+row4<-cowplot::plot_grid(conf_ByExp[[3]]+theme(legend.position="none",axis.title.y = element_text(color="white"),axis.title.x = element_text(color="white")),inv_ByExp[[3]]+theme(legend.position="none",axis.title.y = element_text(color="white")),nrow=2,rel_widths = c(1,0.3),labels=c("",""))
+row4tit<-grid.arrange(arrangeGrob(row4, top=textGrob(label='Schulz et al (2019)',hjust = 0.2,gp = gpar(col = "black", fontsize = 16))))
+
+rowleg<-cowplot::plot_grid(confLeg,invLeg,nrow=2)
+
+```
+
+```{r fig.height=4,fig.width=8.5}
+cowplot::plot_grid(row1,row2,row3,row4,rowleg, nrow=1,rel_widths = c(1,1,1,1,0.3))
+
+ggsave(filename="X_Figures/Experiments_Seperate.pdf",height=8,width=17)
+#ggsave(filename="X_Figures/Experiments_Seperate.png",height=8,width=15)
+
+```
+
+```{r}
+InversionMatrix<-NULL
+# compute probability that a model fits best given it generated the data
+for (i in unique(RecoveryDF$fitModel)){
+  subset=RecoveryDF[RecoveryDF$fitModel==i,]
+  subset$inversionProb=99
+  for (j in unique(RecoveryDF$simModel)){
+    #devide model of interests best fit by the columnsum. (Bayes theorem)
+    subset[subset$simModel==j,]$inversionProb=(subset[subset$simModel==j,]$meanB)/sum(subset$meanB)
+  }
+  InversionMatrix=rbind(InversionMatrix,subset)
+}
+
+InversionMatrix%>%rowwise()%>%mutate(inversionProb=case_when(is.na(inversionProb)~0,
+                                                             TRUE~inversionProb)
+)%>%
+  ggplot(aes(x=simModel,y=fitModel,fill=inversionProb))+
+  geom_tile()+
+  geom_text(aes(label = round(inversionProb, 2)))+
+  scale_fill_viridis(name="p(gen|fit)",option="plasma")+
+  theme_blank()+
+  theme(axis.text.x = element_text(angle = 45,hjust = 1),aspect.ratio = 1)->invM
+
+### collect the plots in a list
+RecoveryDF%>%
+  ggplot(aes(x=simModel,y=fitModel,fill=meanB))+
+  geom_tile()+
+  geom_text(aes(label = round(meanB, 2)))+
+  scale_fill_viridis(name="p(fit|gen)")+
+  theme_blank()+
+  theme(axis.text.x = element_text(angle = 45,hjust = 1),aspect.ratio = 1)->confM
+```
+
+
+# Bayes factor modelcomparison
+That does not look super convincing but its already a start.
+Lets do it how eric did it. Quick reminder: he t-tested every model against each other and did not group by the generative model.
+Could actually also be something to show. How many figures can we have?
+
+```{r}
+modelspace=c("GP-UCB","BMT-UCB","GP-GM","BMT-GM","GP-GV","BMT-GV")
+#modelspaceFi=c("RBF_UCB","BMT_UCB","RBF_GM","BMT_GM","RBF_GV","BMT_GV")
+t_test=list()
+for (fittedModel in 1:length(modelspace)){
+  for (simulatedModel in 1:length(modelspace)){
+    t_test[[fittedModel]]<-
+      rbind(RBF_UCB,BMT_UCB,RBF_GM,BMT_GM,RBF_GV,BMT_GV)%>%rowwise()%>%
+      mutate(fitModel=paste0(kernelnames[kernel],"_",acqnames[aq]))%>%
+      group_by(simModel,fitModel,id)%>%summarize(mFit=mean(V2))%>%
+      filter(simModel==modelspace[simulatedModel] & (fitModel==modelspace[fittedModel] | fitModel==modelspace[simulatedModel]))#%>%
+    #pivot_wider(names_from = "fitModel",values_from="mFit")
+  }
+}
+
+
+
+BF_modelComp<-tibble()
+
+for (fittedModel in 1:length(modelspace)){
+  for (simulatedModel in 1:length(modelspace)){
+    testDf<-rbind(RBF_UCB,BMT_UCB,RBF_GM,BMT_GM,RBF_GV,BMT_GV)%>%rowwise()%>%
+      mutate(fitModel=paste0(kernelnames[kernel],"-",acqnames[aq]))%>%
+      group_by(simModel,fitModel,id)%>%
+      summarize(mFit=mean(V2))%>%
+      filter(simModel==modelspace[simulatedModel] & 
+               (fitModel==modelspace[fittedModel] | fitModel==modelspace[simulatedModel]))%>%
+      pivot_wider(names_from = "fitModel",values_from="mFit")%>%
+      ungroup()
+    #compute bayesfactor
+    if(ncol(testDf)==4){
+      huh<-BayesFactor::ttestBF(x=pull(testDf%>%select(modelspace[fittedModel])),y=pull(testDf%>%select(modelspace[simulatedModel])),paired = T)
+      #concat.
+      BF_modelComp<-rbind(BF_modelComp,tibble(bf=huh@bayesFactor[["bf"]],
+                                              simMod=modelspace[simulatedModel],fitmod=modelspace[fittedModel]))
+    }else{
+      BF_modelComp<-rbind(BF_modelComp,tibble(bf=NaN,simMod=modelspace[simulatedModel],fitmod=modelspace[fittedModel]))
+    }
+  }
+}
+```
+
+# model recovery bayes factor
+```{r}
+BF_modelComp%>%
+  ggplot(aes(x=simMod,y=fitmod,fill=bf))+
+  geom_tile()+
+  geom_text(aes(label = round(bf, 2))) +
+  scale_fill_gradient2()
+
+```

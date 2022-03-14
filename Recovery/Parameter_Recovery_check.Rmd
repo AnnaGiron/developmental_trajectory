@@ -1,0 +1,378 @@
+---
+title: "ParamRecov"
+author: "Simy"
+date: "04/08/2021"
+output: html_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load('tidyverse','ggpubr')
+
+
+params = read.csv('../data/modelFit.csv')
+params = subset(params, kernel=='RBF' & acq=='UCB')
+
+#Source dependencies
+source('../models.R')
+source('../dataProcessing.R')
+source('fit_parrallel_cluster.R')
+
+nParticipants <- 151
+# 150 participants, but id 35 is not available
+##############################################################################################################
+#Cluster configuration: (1 subject x model x 20simpars) per job
+##############################################################################################################
+
+#create list of all kernel functions
+kernellist<-list(rbf, bayesianMeanTracker)
+
+#names of all kernel functions
+kernelnames<-c("RBF", "BMT")
+
+#list of all acquisition functions
+acqlist<-list(greedyMean, greedyVar, ucb) 
+
+#names of all acquisition functions
+acqnames<-c("GM", "GV", 'UCB')
+
+#all combinations of kernels and acquisition functions will be needed
+combs<-expand.grid(1:length(kernellist), 1:length(acqlist))
+
+#create a matrix with combinations of subjectIds and model combinations
+subjectComb <- expand.grid(1:nParticipants, 1:(length(kernellist) * length(acqlist))) #1:? defines the number of unique models to be analyzed
+subjectComb = subset(subjectComb, Var1!=35) # remove id 35 as it is not available
+
+#Cluster id from qsub
+#clusterid <- sample(1:nrow(subjectComb),1) #sample random cluster id for testing
+clusterid <- 1#as.integer(commandArgs(TRUE)[1]) #Cluster id, corresponds to an integer used to indicate which combination of kernel and acquisition function to simulate
+
+subjectId <- subjectComb[clusterid,1] #used to identify unique subjects
+
+set.seed(1) #set seed as the clusterid
+
+##############################################################################################################
+#Compile Experimental Data
+##############################################################################################################
+#only keep people who have completed the task
+#data <- dataImport_Adolescent() #sourced from dataProcessing.R
+# import preprocessed data
+data = read.csv('../data/AdolescentGrid.csv')
+#Normalize data
+data$z <- (data$z - 25) / 50
+
+uid <- unique(data$id)[subjectId] #convert subjectId to uid
+
+#extract environments
+environments <- lapply(fromJSON("../data/smoothKernel.json"), FUN=function(x) matrix(as.numeric(unlist(x)), ncol=3, byrow=TRUE, dimnames=list(seq(1,64),  c('x2', 'y', 'x1'))))
+
+env <- as.data.frame(environments[[1]])
+for (i in 2:40){
+  env<-rbind(env,as.data.frame(environments[[i]]))
+}
+env$en<-rep(1:40, each=64)
+
+#Scaling reward range
+env$y<-env$y*50
+
+
+
+
+
+fittedModel = read.csv('../data/modelFit.csv')
+
+fittedModel = fittedModel %>%
+  mutate(kernel=factor(kernel, levels=c('RBF', 'BMT'), labels=c('GP', 'BMT'))) %>%
+  mutate(agegroup=factor(agegroup,
+                         levels=rev(c('[25,55]', '[18,25)', '[14,18)', '[11,14)', '[9,11)', '[7,9)', '[5,7)')),
+                         labels=rev(c('25-55', '18-24', '14-17', '11-13', '9-10', '7-8', '5-6')))) %>%
+  mutate(experiment=factor(experiment, levels=c('Meder (2021)', 'Schulz (2019)', 'Adolescents')))
+
+# only use GP-UCB model
+fittedModel = subset(fittedModel, kernel=='GP' & acq=='UCB')
+
+#############################################################################################################################
+# Simulating performance for different parameter values
+#############################################################################################################################
+# Tukey's fence to compute upper and lower bound for each parameter
+tukeysFence <- function(x, k = 1.5, na.rm = TRUE) {
+  quar <- quantile(x, probs = c(0.25, 0.75), na.rm = na.rm)
+  iqr <- diff(quar)
+  
+  lower = quar[1] - k * iqr
+  upper = quar[2] + k * iqr
+  
+  return(c(lower, upper))
+}
+
+# parameter range based on Tukey's fence
+lambda = tukeysFence(log(fittedModel$lambda))
+beta = tukeysFence(log(fittedModel$beta))
+tau = tukeysFence(log(fittedModel$tau))
+
+# parameters to simulate take the exp out. Done later.
+paramsSims = expand.grid(lambda=seq(lambda[1], lambda[2], len=20), 
+                         beta=seq(beta[1], beta[2], len=20),
+                         tau=seq(-5, tau[2], len=20))
+
+
+```
+
+
+
+# Recovery Subjects
+Here i show the parameter recovery for the parameter estimates of all subjects
+
+```{r}
+`%notin%` <- Negate(`%in%`)
+
+#huh<-NULL
+#setwd("./")
+filenames <- list.files("./parameterRecovery/", pattern="*_New_4.rds", full.names=TRUE)
+files_list_subsim <- lapply(filenames, readRDS)
+huh<-do.call("rbind",files_list_subsim)%>%as_tibble()
+
+
+huh%>%group_by(uid,lambdaSim,betaSim,tauSim)%>%
+  dplyr::summarise(
+    lambdaCVMean=mean(par1),
+            betaCVMean=mean(par2),
+            tauCVMean=mean(par3)
+  )->corrs
+# compute y axis upper limits as the 95% percentile of fits given the maximum value used for simulations.
+ylimitslambda=c(0,quantile(corrs%>%
+                             ungroup()%>%
+                             filter(lambdaSim %notin% huh$lambdaSim)%>%
+                             filter(lambdaSim==max(lambdaSim))%>%
+                             .$lambdaCVMean,c(0.1,0.95))[2]%>%exp())
+
+ylimitsBeta=c(0,quantile(corrs%>%
+                           ungroup()%>%
+                           filter(betaSim %notin% huh$betaSim)%>%
+                           filter(betaSim==max(betaSim))%>%
+                           .$betaCVMean,c(0.1,0.95))[2]%>%exp())
+
+ylimitsTau=c(0,quantile(corrs%>%
+                          ungroup()%>%
+                          filter(tauSim %notin% huh$tauSim)%>%
+                          filter(tauSim==max(tauSim))%>%
+                          .$tauCVMean,c(0.1,0.95))[2]%>%exp())
+
+
+Annas_Colors<-c("#E69F00", "#009E73", "#D1495B")
+
+
+LambdaRecovSubs<-corrs%>%#filter(lambdaSim %in% paramsSims$lambda)%>%
+  ggplot(aes(x=exp(lambdaSim),y=exp(lambdaCVMean)))+
+  geom_point(alpha=0.2)+
+  geom_smooth(method="lm",color=Annas_Colors[1])+
+  geom_abline(slope=1,linetype="dotdash")+
+  #stat_summary(color="deeppink")+  #stat_summary(color="red",size=1)+
+  scale_y_continuous("Parameter Estimate")+
+  scale_x_continuous("")+
+  ggtitle(expression(lambda))+
+  stat_cor(method = "kendall",cor.coef.name=expression("r"[tau]),p.accuracy = 0.001)+
+  #coord_cartesian(ylim = ylimitslambda)+
+  theme_classic(15)+theme(plot.title = element_text(hjust = 0.5),aspect.ratio = 1)
+
+BetaRecovSubs<-corrs%>%#filter(betaSim %in% paramsSims$beta)%>%
+  ggplot(aes(x=exp(betaSim),y=exp(betaCVMean)))+
+  geom_point(alpha=0.2)+
+  geom_smooth(method="lm",color=Annas_Colors[2])+
+  geom_abline(slope=1,linetype="dotdash")+
+  #stat_summary(color="deeppink")+  #stat_summary(color="red",size=1)+
+  scale_y_continuous("")+
+  scale_x_continuous("")+
+  ggtitle(expression(beta))+
+  stat_cor(method = "kendall",cor.coef.name=expression("r"[tau]),p.accuracy = 0.001)+
+  coord_cartesian(ylim = ylimitsBeta)+
+  theme_classic(15)+theme(plot.title = element_text(hjust = 0.5),aspect.ratio = 1)
+
+TauRecovSubs<-corrs%>%#filter(tauSim %in% paramsSims$tau)%>%
+  ggplot(aes(x=exp(tauSim),y=exp(tauCVMean)))+
+  geom_point(alpha=0.2)+
+  geom_smooth(method="lm",color=Annas_Colors[3])+
+  geom_abline(slope=1,linetype="dotdash")+
+  #stat_summary(+  #stat_summary(color="red",size=1)+
+  scale_y_continuous("")+
+  scale_x_continuous("")+
+  stat_cor(method = "kendall",cor.coef.name=expression("r"[tau]),p.accuracy = 0.001)+
+  ggtitle(expression(tau))+
+  coord_cartesian(ylim = ylimitsTau)+
+  theme_classic(15)+theme(plot.title = element_text(hjust = 0.5),aspect.ratio = 1)
+
+subjectRecov<-cowplot::plot_grid(LambdaRecovSubs,BetaRecovSubs,TauRecovSubs, nrow=1)
+
+```
+
+
+
+
+
+
+# Recovery Full space
+Here i show the recovery for the full parameter space within tuckeys fence of the parameter estimates.
+In logspace, i compute the 
+```{r fig.width=10}
+#negate in operater to later subset and only get the values we varied in tuckeys fence
+filenamesSims <- list.files("./parameterRecovery/", pattern="*_New", full.names=TRUE)
+files_list_sim<- lapply(filenamesSims, readRDS)
+ldf<-do.call("rbind",files_list_sim)%>%as_tibble()
+
+
+ldf%>%group_by(uid,lambdaSim,betaSim,tauSim)%>%
+  dplyr::summarise(
+    lambdaCVMean=mean(par1),
+            betaCVMean=mean(par2),
+            tauCVMean=mean(par3)
+  )->corrsSims
+
+
+# compute y axis upper limits as the 95% percentile of fits given the maximum value used for simulations.
+ylimitslambda=c(0,quantile(corrsSims%>%
+                             ungroup()%>%
+                             filter(lambdaSim %notin% huh$lambdaSim)%>%
+                             filter(lambdaSim==max(lambdaSim))%>%
+                             .$lambdaCVMean,c(0.1,0.95))[2]%>%exp())
+
+ylimitsBeta=c(0,quantile(corrsSims%>%
+                           ungroup()%>%
+                           filter(betaSim %notin% huh$betaSim)%>%
+                           filter(betaSim==max(betaSim))%>%
+                           .$betaCVMean,c(0.1,0.95))[2]%>%exp())
+
+ylimitsTau=c(0,quantile(corrsSims%>%
+                          ungroup()%>%
+                          filter(tauSim %notin% huh$tauSim)%>%
+                          filter(tauSim==max(tauSim))%>%
+                          .$tauCVMean,c(0.1,0.95))[2]%>%exp())
+
+
+
+LambdaRecov<-corrsSims%>%filter(lambdaSim %notin% huh$lambdaSim)%>%
+  ggplot(aes(x=exp(lambdaSim),y=exp(lambdaCVMean)))+
+  geom_point(alpha=0.2)+
+  geom_smooth(method="lm",color=Annas_Colors[1])+
+  stat_summary(color=Annas_Colors[1])+  #stat_summary(color="red",size=1)+
+  geom_abline(slope=1,linetype="dotdash")+
+  scale_y_continuous("Parameter Estimate")+
+  stat_cor(method = "kendall",cor.coef.name=expression("r"[tau]),p.accuracy = 0.001)+
+  scale_x_continuous("")+
+  ggtitle("")+
+  #coord_cartesian(ylim = ylimitslambda)+
+  theme_classic(15)+theme(plot.title = element_text(hjust = 0.5),aspect.ratio = 1)
+
+
+BetaRecov<-corrsSims%>%filter(betaSim %notin% huh$betaSim)%>%
+  ggplot(aes(x=exp(betaSim),y=exp(betaCVMean)))+
+  geom_point(alpha=0.2)+
+  geom_smooth(method="lm",color=Annas_Colors[2])+
+  stat_summary(color=Annas_Colors[2])+  #stat_summary(color="red",size=1)+
+  geom_abline(slope=1,linetype="dotdash")+
+  stat_cor(method = "kendall",cor.coef.name=expression("r"[tau]),p.accuracy = 0.001)+
+  scale_y_continuous("")+
+  scale_x_continuous("")+
+  ggtitle("")+
+  #coord_cartesian(ylim = ylimitsBeta)+
+  theme_classic(15)+theme(plot.title = element_text(hjust = 0.5),aspect.ratio = 1)
+
+#remove individual outiers from the scale
+  
+TauRecov<-corrsSims%>%filter(tauSim %notin% huh$tauSim)%>%#filter(tauSim>-4)%>%
+  ggplot(aes(x=exp(tauSim),y=exp(tauCVMean)))+
+  geom_point(alpha=0.2)+
+  geom_smooth(method="lm",color=Annas_Colors[3])+
+  stat_summary(color=Annas_Colors[3])+  #stat_summary(color="red",size=1)+
+  geom_abline(slope=1,linetype="dotdash")+
+  scale_y_continuous("")+
+  scale_x_continuous("")+
+  ggtitle("")+
+ # coord_cartesian(ylim = ylimitsTau)+
+  stat_cor(method = "kendall",cor.coef.name=expression("r"[tau]) ,p.accuracy = 0.001)+
+  theme_classic(15)+theme(plot.title = element_text(hjust = 0.5),aspect.ratio = 1)
+  
+superRecov<-cowplot::plot_grid(LambdaRecov,BetaRecov,TauRecov, nrow=1)
+```
+# compete plot
+```{r fig.height=7,fig.width=10.5}
+
+y.grob <- textGrob("Parameter Estimate", 
+                   gp=gpar(fontsize=15), rot=90)
+
+x.grob <- textGrob("Simulation Parameter", 
+                   gp=gpar(fontsize=15))
+
+#add to plot
+joint<-cowplot::plot_grid(subjectRecov,superRecov,nrow=2,labels="auto",hjust=-3,align = "hv")
+
+allParamRecov<-grid.arrange(arrangeGrob(joint, bottom = x.grob))
+allParamRecov
+ggsave("X_Figures/ParamRecovery.pdf",plot=allParamRecov,width=10.5,height=7)
+```
+
+
+## Define function to fit in parralel
+
+```{r}
+library(doParallel)
+
+#####setup parralel
+cl <- makeCluster(8)
+registerDoParallel(cl)
+####
+
+uid = 1#as.integer(commandArgs(TRUE)[1]) 
+paramCL =1# as.integer(commandArgs(TRUE)[2]) 
+d1<-subset(data, id==uid)
+allrecov=NULL
+for (i in 1:unique(paramsSims$lambda)){
+  if (paramCL==1){
+    print("Varying Lambda")
+  simP<-c(paramsSims$lambda[i],
+          params%>%filter(id==uid)%>%pull(beta),#%>%as_vector()
+          params%>%filter(id==uid)%>%pull(tau))
+  }else if (paramCL==2){
+    print("Varying beta")
+    simP<-c(params%>%filter(id==uid)%>%pull(lambda),
+          paramsSims$beta[i],#%>%as_vector()
+          params%>%filter(id==uid)%>%pull(tau))#%>%as_vector()
+  }else if (paramCL==3){
+    print("Varying tau")
+    simP<-c(params%>%filter(id==uid)%>%pull(lambda),
+          params%>%filter(id==uid)%>%pull(beta),#%>%as_vector()
+          paramsSims$tau[i])#%>%as_vector()
+  }
+  enselect<-sample(1:40, 1)
+  environ<-subset(env, en==enselect)
+  print("simulate GP")
+  sim<-modelSimulateChoice(par=simP,subjD=d1, k=rbf, acquisition=ucb,environ=environ)
+  #add simulations to the dataconstruct
+  d2=d1
+  d2$z=(sim$mu -25)/50
+  d2$x=sim$x1
+  d2$y=sim$x2
+  #todo: sample from the envirionment for simulation and fitting and only take these vals.
+  print(simP)
+  print("Setup_CV")
+  out<-foreach(leaveoutindex = 2:9,.combine = 'rbind')%dopar% {# do the cv on multiple cores
+    #source of modeling code
+    source("models.R")
+    #packages
+    packages <- c('plyr', 'dplyr', 'jsonlite', 'lsr', 'BayesFactor', 'matrixcalc')
+    #invisible(lapply(packages, install.packages, character.only = TRUE))
+    invisible(lapply(packages, require, character.only = TRUE)) #loads packages
+    
+    Xnew<-as.matrix(expand.grid(0:7,0:7)) #do this outside the loop for better speed
+    FitParamCV(d2, rbf, ucb,leaveoutindex)
+  }
+  print("Done")
+  out%>%as_tibble()%>%
+    mutate(lambdaSim=simP[1],
+           betaSim=simP[2],
+           tauSim=simP[3])
+ allrecov<-rbind(allrecov,out)
+}
+out
+```
