@@ -76,8 +76,6 @@ mTrajectories <- dTrajectories  %>% group_by(coolingFunc, method, i) %>%
   mutate(method=factor(method, levels=c('SA', 'SGD'), labels=c('Simulated Annealing (SA)', 'Stochastic Hill\nClimbing (SHC)'))) %>%
   mutate(coolingFunc=factor(coolingFunc, levels=c('fastCooling', 'expCooling', 'linearCooling'), labels=c('fast', 'exponential', 'linear')))
 
-adultPerformance <- behavior %>% filter(agegroup=='25-55') %>% group_by(id) %>% summarize(reward = mean(z)/50) %>% pull(reward)
-adultRange <- t.test(adultPerformance, conf.level = 0.95)$conf.int
 
 # plot reward
 pTraj = ggplot(mTrajectories, aes(x=i, y=reward, color=coolingFunc)) +
@@ -101,13 +99,14 @@ pTraj = ggplot(mTrajectories, aes(x=i, y=reward, color=coolingFunc)) +
         # legend.margin=margin(t=0, unit='cm'), legend.box.margin=margin(t=0, unit='cm'))
 pTraj
 
-
 # trajectories in parameter space
 # faceted by tau
 # select facet by selecting tau that is closest to the group median
 taus = unique(sim$tau)
 closestTau = which.min(abs(taus - mean(mTrajectories$tau)))
 sim$tau[closestTau]
+# cut trajectories after 500 iterations
+#mTrajectories = subset(mTrajectories, i<500)
 
 pTrajParam = ggplot() +
   geom_raster(subset(sim, tau==taus[closestTau]), mapping=aes(x=lambda, y=beta, fill=meanReward)) +
@@ -125,24 +124,41 @@ pTrajParam = ggplot() +
 
 pTrajParam
 
-# human trajectory
-dHuman = ddply(params, ~agegroup, plyr::summarize, lambda = median(lambda),
-               beta = median(beta), tau = median(tau), mAge = mean(age_years))
-
-pTrajAllAlgos <- pTrajParam +  geom_line(data = dHuman, aes(x=lambda, y=beta), color = 'black', alpha = 1, size = 1) +
-  geom_point(data = dHuman, aes(x=lambda, y=beta, color = mAge), alpha = 0.7, size=2) +
-  geom_text_repel(data = dHuman, aes(x=lambda, y=beta, label = agegroup, color = mAge), size = 5,
-                  alpha = 0.9, segment.alpha = 0.5, min.segment.length = 0, arrow = arrow(length = unit(0.015, "npc")), 
-                  seed = 42, box.padding = 1,  max.overlaps = Inf, nudge_x = -.2)+
-  scale_color_viridis(direction = -1, name='Age') 
-
-pTrajAllAlgos
-
 
 ################################################################################################
 # Simplified trajectory plot 
 ################################################################################################
+# human trajectory
+dHuman = ddply(params, ~agegroup, plyr::summarize, lambda = median(lambda),
+               beta = median(beta), tau = median(tau), mAge = mean(age_years))
+
 closestTau = which.min(abs(taus - median(dHuman$tau))) #For aggregate plot use median across all age groups
+
+#just SHC-fast cooling
+pSingleTraj <- ggplot() +
+  geom_raster(subset(sim, tau==taus[closestTau]), mapping=aes(x=lambda, y=beta, fill=meanReward)) +
+  #geom_path(data = dModelPerSim, mapping = aes(x = lambda, y = beta), color='#02a6d4', size=.1, alpha = 0.1)+ #each individual trajectory
+  geom_line(data = dHuman, aes(x=lambda, y=beta), color = 'black', alpha = 1, size = 1) +
+  geom_point(data = dHuman, aes(x=lambda, y=beta, color = mAge), alpha = 0.7, size=2) +
+  geom_text_repel(data = dHuman, aes(x=lambda, y=beta, label = agegroup, color = mAge), size = 6,
+                  alpha = 0.9, segment.alpha = 0.5, min.segment.length = 0, arrow = arrow(length = unit(0.015, "npc")), 
+                  seed = 42, box.padding = 1,  max.overlaps = Inf, nudge_x = -.2)+
+  geom_path(dModel, mapping=aes(x=mLambda, y=mBeta), color='#537fbb', size=.6) +
+  scale_x_continuous(trans="log10", expand=c(0,0)) +
+  scale_y_continuous(trans="log10", expand=c(0,0)) +
+  scale_alpha_manual(name=NULL, values=c(1,1), breaks=c('Current\nAge Group', 'Algorithm')) +
+  scale_fill_viridis(option='inferno', name='Reward') +
+  scale_color_viridis(direction = -1, name='Age') +
+  xlab(expression(paste('Generalization ', lambda, ' [logscale]'))) +
+  ylab(expression(paste('Exploration ', beta, ' [logscale]'))) +
+  #annotate(geom='text', x=.1, y=1.5, label=bquote(~ bar(tau) == .(signif(taus[closestTau],digits=2))),color='white', size=2.7, hjust=0, vjust=0) +
+  ggtitle("Human       vs. SHC (fast cooling)") +
+  theme_classic() +
+  # guides(fill = guide_legend(override.aes = list(size = 2))) +
+  theme( axis.line=element_line(colour='white'), strip.background=element_blank(),
+         plot.margin=unit(c(0.1,0.1,0.1,0.1), 'cm'), legend.margin=margin(t=0,unit="cm"),
+         legend.key.size = unit(0.4, 'cm'))
+pSingleTraj
 
 #SA and SHC
 dModelSASHC <- trajectories %>% 
@@ -179,6 +195,16 @@ pDualTraj <- ggplot() +
          plot.margin=unit(c(0.1,0.1,0.1,0.1), 'cm'), legend.margin=margin(t=0,unit="cm"),
          legend.key.size = unit(0.4, 'cm'))
 pDualTraj
+
+
+pTrajAllAlgos <- pTrajParam +  geom_line(data = dHuman, aes(x=lambda, y=beta), color = 'black', alpha = 1, size = 1) +
+  geom_point(data = dHuman, aes(x=lambda, y=beta, color = mAge), alpha = 0.7, size=2) +
+  geom_text_repel(data = dHuman, aes(x=lambda, y=beta, label = agegroup, color = mAge), size = 5,
+                  alpha = 0.9, segment.alpha = 0.5, min.segment.length = 0, arrow = arrow(length = unit(0.015, "npc")), 
+                  seed = 42, box.padding = 1,  max.overlaps = Inf, nudge_x = -.2)+
+  scale_color_viridis(direction = -1, name='Age') 
+
+pTrajAllAlgos
 
 
 ################################################################################################
@@ -290,12 +316,22 @@ p_paramsAll
 #Save plot
 ########################
 #Main plot
+#combined = cowplot::plot_grid(pTrajectoryTau_panels, p_params, ncol=1, labels='auto', rel_heights=c(2,1))
+#ggsave(filename = "plots/Fig4.pdf", plot = combined, height=7.5, width=9, units = "in")
+
 combined = cowplot::plot_grid(pTraj, pDualTraj, rel_widths = c(.6, 1), labels='auto')
 ggsave(filename = "plots/Fig4.pdf", plot = combined, height=4, width=11, units = "in")
 
 
 
 #SI plot
+
+# pTrajectory = cowplot::plot_grid(pTrajectory1+ggtitle(''), pTrajectory2, pTrajectory3, ncol=3, rel_widths=c(1,1,1.4))
+# title = ggdraw() +
+#   draw_label("Parameter Trajectories (Human vs. SHC)", x = 0, hjust = 0) +
+#   theme(plot.margin = margin(0, 0, 0, 40))
+# pTrajectory = cowplot::plot_grid(title, pTrajectory,  ncol = 1, rel_heights = c(0.1, 1))
+
 pHillClimbing = cowplot::plot_grid(pTrajAllAlgos, p_paramsAll, rel_heights = c(1,1), labels='auto', ncol=1)
 ggsave(filename='plots/S6.pdf', plot=pHillClimbing, height=10, width=11, units = "in")
 

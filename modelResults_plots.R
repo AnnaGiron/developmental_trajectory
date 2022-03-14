@@ -351,9 +351,6 @@ lambdaParams <- params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predic
 betaParams<-  params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(betaChange,newdata=params,nsamples = 400)))%>%
   pivot_longer(-colnames(params_old))
 
-betaChange%>%spread_draws(b_alpha_Intercept)%>%rowwise()%>%
-  mutate(hm=inv_logit_scaled(b_alpha_Intercept,lb = 0,ub=20))
-
 tauParams<- params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(tauChange,newdata=params,nsamples = 400)))%>%
   pivot_longer(-colnames(params_old))
 
@@ -375,7 +372,11 @@ posteriorEstimates <-allParamsPreds %>% select(lambda, beta, tau,age_years, name
 
 
 posteriorEstimates$param_pred <- factor(posteriorEstimates$param_pred, levels=c('lambda', 'beta', 'tau'))
-allParamsDots$param_pred<- factor(allParamsLong$param_pred, levels=c('lambda', 'beta', 'tau'))
+posteriorEstimates$param_pred <- factor(posteriorEstimates$param_pred, levels=c('lambda', 'beta', 'tau'),
+                                        labels=c(expression(paste('Generalization ', lambda)),
+                                                 expression(paste('Exploration ', beta)),
+                                                 expression(paste('Temperature ', tau))))
+
 #Posterior draws
 #posteriorParamDraws <- posteriorEstimates %>% group_by(name, age_years, param) %>% summarize(value = mean(value))
 
@@ -383,7 +384,11 @@ allParamsDots$param_pred<- factor(allParamsLong$param_pred, levels=c('lambda', '
 #GP-UCB params as raw data
 gpucbParams <- subset(params, ModelName == 'GP-UCB')
 gpucbParams <- gpucbParams %>% pivot_longer(cols =c(lambda, beta, tau), names_to='param_pred')
-gpucbParams$param_pred <- factor(gpucbParams$param_pred, levels = c('lambda', 'beta', 'tau'))
+gpucbParams$param_pred <- factor(gpucbParams$param_pred, levels=c('lambda', 'beta', 'tau'),
+                                 labels=c(expression(paste('Generalization ', lambda)),
+                                          expression(paste('Exploration ', beta)),
+                                          expression(paste('Temperature ', tau))))
+
 
 posteriorParamPlots<-posteriorEstimates%>%#mutate(log(value))
   ggplot()+
@@ -397,7 +402,7 @@ posteriorParamPlots<-posteriorEstimates%>%#mutate(log(value))
   #scale_y_log10(breaks = c(.01, .1, 1.0, 10), labels = c(".01", '0.1', '1.0', '10'))+
   scale_y_log10(labels = dropLeadingZero)+
   scale_x_log10()+
-  facet_wrap(~param_pred, labeller=label_parsed, scales='free_y')+
+  facet_grid(~param_pred, labeller=label_parsed, scales='free_y')+
   scale_color_manual(values = paramPal)+
   #xlab("Age (Years) [logscale]") +
   xlab("") +

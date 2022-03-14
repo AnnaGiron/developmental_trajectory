@@ -25,4 +25,6 @@
    
 ## Model and Parameter Recovery
 - `Recovery/Model_Recovery.Rmd` import, analyze and plot model recovery results generated with `Recovery/Model_Recovery_Cluster.R`, `Recovery/Model_Recovery_Cluster_Meder.R` and `Recovery/Model_Recovery_Cluster_Schulz.R` and saved in `Recovery/modelRecovery/`. Models used for recovery are defined in `fit_parallel_cluster.R`.
+  (generates Figure S3 )
 - `Recovery/Parameter_Recovery_check.R` import, analyze and plot parameter recovery results generated with `Recovery/Parameter_Recovery_Cluster.R` and saved in `Recovery/parameterRecovery/`. Models used for recovery are defined in `Recovery/fit_parallel_cluster.R`.
+  (generates Figure S4)

@@ -7,6 +7,7 @@ packages <- c('plyr', 'dplyr', 'tidyr', 'ggplot2', 'cowplot', 'viridis', 'colors
 invisible(lapply(packages, require, character.only = TRUE)) #loads packages
 
 source('dataProcessing.R')
+source('statisticalTests.R')
 
 modelPal <- c('black', '#6c7195', '#ea9d67', '#7ec3aa')
 paramPal = c("#FFEE67", '#27AD88', "#D1495B")
@@ -67,11 +68,16 @@ sim = sim[,!names(sim) %in% 'X']
 # Compare human and algorithm trajectories
 ################################################################################################
 
-#Test if the SHC performed better than humans
-source('statisticalTests.R')
+#Test if the SGD performed better than humans
 humanAdults <-  behavior %>% filter(agegroup=='25-55') %>% group_by(id) %>% summarize(reward = mean(z)/50) 
 bestAlgo <- trajectories %>% filter(method ==  'SGD' & i == 1499 & coolingFunc=='fastCooling') %>% group_by(id) %>% summarize(reward = mean(reward))
 
 ttestPretty(bestAlgo$reward, humanAdults$reward) #average across simulated participants
-ttestPretty(subset(trajectories,method ==  'SGD' & i == 1499 & coolingFunc=='fastCooling') $reward, humanAdults$reward) #each simulated trajectory
+ttestPretty(subset(trajectories,method ==  'SGD' & i == 1499 & coolingFunc=='fastCooling')$reward, humanAdults$reward) #each simulated trajectory
+ttestPretty(subset(trajectories,method ==  'SA' & i == 1499 & coolingFunc=='fastCooling')$reward, humanAdults$reward) #each simulated trajectory
 
+ttestPretty(subset(trajectories,method ==  'SGD' & i == 1499 & coolingFunc=='fastCooling')$reward, subset(trajectories,method ==  'SA' & i == 1499 & coolingFunc=='fastCooling')$reward)
+
+
+adultPerformance <- behavior %>% filter(agegroup=='25-55') %>% group_by(id) %>% summarize(reward = mean(z)/50) %>% pull(reward)
+adultRange <- t.test(adultPerformance, conf.level = 0.95)$conf.int
