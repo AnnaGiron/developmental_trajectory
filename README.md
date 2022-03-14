@@ -11,7 +11,7 @@
 - `statisticalTests.R` contains wrapper functions for all statistical tests used for the analyses
 -  `behavior_tests.R` and `behavior_plots.R`: analyze and plot participant's behavior in the multi-armed bandit task    
    (generates Figure 2)
--  `crossvalidation.R`: optimize parameters of the GP-UCB model and the lesioned models. All models being fit here are defined in`models.R`.
+-  `crossvalidation.R`: optimize parameters of the GP-UCB model and the lesioned models. All models being fit here are defined in `models.R`.
 -  `learningCurves.R`: simulate learning curves
 -  `PXP.ipynb` compute and save the protected exceedance probability (*pxp*) for all models and age groups. Functions to compute the *pxp* are defined in `bms.py` and files containing the negative log likelihoods that are imported in the notebook are created in `modelResults_tests.R`.
 -  `modelResults_tests.R` and `modelResults_plots.R`: analyze and plot model results.  Therefore, simulated learning curves from `learningCurves.R` and *pxp*s from `PXP.ipynb` are imported.    
