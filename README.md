@@ -1,4 +1,6 @@
 # developmental_trajectory
+## Preprint:
+https://charleywu.github.io/downloads/giron2022developmental.pdf
 
 ## Datasets:    
 - `data/behavioralData.csv`: behavioral data of all 281 participants   
