@@ -7,6 +7,7 @@ https://charleywu.github.io/downloads/giron2022developmental.pdf
 - `data/modelFit.csv`: parameter estimates of all models for all participants   
 - `data/modelFit_OriginalID`: parameter estimates of all models for all participants with original IDs from the Schulz et al and Meder et al (needed for recovery analyses)
 - `data/paramsYoungestAgegroup.csv`: cross-validated parameter estimates of the youngest age group (used as starting points for the optimization algorithms)
+- `data/smoothKernel.json`: all 40 environments, from which a new environment was chosen in each round without replacement. Also used for model and parameter recovery
 
 ## Scripts:   
 - `dataProcessing.R`: import and pre-process behavioral data and parameter estimates (added for reference, since we already include the generated outputs instead of the inputs)
