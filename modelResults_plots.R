@@ -285,73 +285,50 @@ run_model <- function(expr, path, reuse = TRUE) {
 }
 
 
-
-bprior <- prior(normal(0, 2), nlpar = "b0") +
+bprior <- c(
+  set_prior("normal(0, 2)", resp = c("lambda","beta","tau"),nlpar = "b0"),
   # prior(exponential(0.1), nlpar = "cpunc")+
-  prior(normal(0, 1), nlpar = "b1") +
-  prior(normal(0, 1), nlpar = "b2") +
-  prior(normal(0, 1), nlpar = "alpha")# not entirely sure what a good prior is here
+  set_prior("normal(0, 1)", resp = c("lambda","beta","tau"),nlpar = "b1"),
+  set_prior("normal(0, 1)", resp = c("lambda","beta","tau"),nlpar = "b2"),
+  set_prior("normal(0, 1)", resp = c("lambda","beta","tau"),nlpar = "alpha")
+)# not entirely sure what a good prior is here
 
-
-#######################################
-# lambda
-#######################################
-bformLambda <- bf(
-  log(lambda)~ b0 + b1 * (age_years - omega) * step((omega - age_years)) + 
-    b2 * (age_years - omega) * step((age_years - omega)),
-  b0 + b1 + b2 + alpha ~ 1,
-  # to keep omega within the age ange of 0 to 10
-  nlf(omega ~ inv_logit(alpha) * 20),
-  nl = TRUE
-)
-
-lambdaChange<-run_model(brm(bformLambda, data = tibble(params),prior = bprior,cores=4,iter=4000,control=list(adapt_delta=0.99)),path = "brms_modelfits/lambdaChange")
-
-
-#######################################
-# beta
-#######################################
 # inv logit looses the step function a little
 bform <- bf(
-  log(beta)~ b0 + b1 * (age_years - omega) * step((omega - age_years)) + 
+  mvbind(lambda,beta,tau) ~ b0 + b1 * (age_years - omega) * step((omega - age_years)) + 
     b2 * (age_years - omega) * step((age_years - omega)),
   b0 + b1 + b2 + alpha ~ 1,
-  # to keep omega within the age ange of 0 to 10
-  nlf(omega ~ inv_logit(alpha) * 20),
+  # to keep omega within the age range of 5 to 25
+  nlf(omega ~ 5+inv_logit(alpha) * 20),
   nl = TRUE
 )
 
-betaChange<-run_model(brm(bform, data = tibble(params),prior = bprior,cores=4,iter=4000,control=list(adapt_delta=0.99)),path = "brms_modelfits/betaChange")
-
-
-#######################################
-# tau
-#######################################
-# inv logit looses the step function a little
-bformT <- bf(
-  log(tau)~ b0 + b1 * (age_years - omega) * step((omega - age_years)) + 
-    b2 * (age_years - omega) * step((age_years - omega)),
-  b0 + b1 + b2 + alpha ~ 1,
-  # to keep omega within the age ange of 0 to 10
-  nlf(omega ~ inv_logit(alpha) * 20),
-  nl = TRUE
+# rescore here because brms does something wierd to the names that i dont understand.
+cpmodelparams<-params%>%mutate(
+  lambda=log(lambda),
+  beta=log(beta),
+  tau=log(tau)
 )
 
-tauChange<-run_model(brm(bformT, data = tibble(params),prior = bprior,cores=4,iter=4000,control=list(adapt_delta=0.99)),path = "brms_modelfits/tauChange")
-
+multiChange<-run_model(brm(bform, data = cpmodelparams,prior = bprior,cores=4,iter=4000,control=list(adapt_delta=0.99)),path = "brms_modelfits/multi_Change")
 
 
 #######################################
 # Plot change models
 #######################################
 
-lambdaParams <- params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(lambdaChange,newdata=params,nsamples = 400)))%>%
+lambdaParams <- params%>%filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(multiChange,newdata=params,nsamples = 400)[,,1]))%>%
   pivot_longer(-colnames(params_old))
 
-betaParams<-  params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(betaChange,newdata=params,nsamples = 400)))%>%
+#scnd dim is beta
+betaParams<-  params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(multiChange,newdata=params,nsamples = 400)[,,2]))%>%
   pivot_longer(-colnames(params_old))
 
-tauParams<- params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(tauChange,newdata=params,nsamples = 400)))%>%
+# betaChange%>%spread_draws(b_alpha_Intercept)%>%rowwise()%>%
+#   mutate(hm=inv_logit_scaled(b_alpha_Intercept,lb = 0,ub=20))
+
+#third is tau
+tauParams<- params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(multiChange,newdata=params,nsamples = 400)[,,3]))%>%
   pivot_longer(-colnames(params_old))
 
 #SC: Here the actual model predictions have been thrown away before but we need to keep them if we want to plot them
@@ -359,8 +336,7 @@ allParams<-lambdaParams%>%magrittr::set_colnames(value = c(colnames(lambdaParams
 allParams$beta_pred <- betaParams$value
 allParams$tau_pred <- tauParams$value
 
-
-# for some reason the factor doesn't work otherwise
+# for some reason the factor doesnt work otherwise
 allParamsPreds<-lambdaParams
 allParamsPreds$lambda<-lambdaParams$value
 allParamsPreds$beta <- betaParams$value
@@ -371,7 +347,7 @@ posteriorEstimates <-allParamsPreds %>% select(lambda, beta, tau,age_years, name
   pivot_longer(cols = c(lambda, beta, tau), names_to = 'param_pred')
 
 
-posteriorEstimates$param_pred <- factor(posteriorEstimates$param_pred, levels=c('lambda', 'beta', 'tau'))
+# posteriorEstimates$param_pred <- factor(posteriorEstimates$param_pred, levels=c('lambda', 'beta', 'tau'))
 posteriorEstimates$param_pred <- factor(posteriorEstimates$param_pred, levels=c('lambda', 'beta', 'tau'),
                                         labels=c(expression(paste('Generalization ', lambda)),
                                                  expression(paste('Exploration ', beta)),
@@ -380,24 +356,25 @@ posteriorEstimates$param_pred <- factor(posteriorEstimates$param_pred, levels=c(
 #Posterior draws
 #posteriorParamDraws <- posteriorEstimates %>% group_by(name, age_years, param) %>% summarize(value = mean(value))
 
-
+# paramPal = c("#FFEE67", '#27AD88', "#D1495B", "#FFEE67", '#27AD88', "#D1495B")
 #GP-UCB params as raw data
 gpucbParams <- subset(params, ModelName == 'GP-UCB')
 gpucbParams <- gpucbParams %>% pivot_longer(cols =c(lambda, beta, tau), names_to='param_pred')
+# gpucbParams$param_pred <- factor(gpucbParams$param_pred, levels = c('lambda', 'beta', 'tau'))
 gpucbParams$param_pred <- factor(gpucbParams$param_pred, levels=c('lambda', 'beta', 'tau'),
                                  labels=c(expression(paste('Generalization ', lambda)),
                                           expression(paste('Exploration ', beta)),
                                           expression(paste('Temperature ', tau))))
-
 
 posteriorParamPlots<-posteriorEstimates%>%#mutate(log(value))
   ggplot()+
   stat_summary(aes(x=age_years,y=exp(value)),fun.min = function(z) { quantile(z,0.25) }, fun.max = function(z) { quantile(z,0.75) },
                fun = mean,geom="ribbon",fill="grey",alpha=0.5)+
   geom_point(data=gpucbParams,aes(y=value,x=age_months/12,color=param_pred),alpha=0.3,size=0.3)+
-  #stat_summary(data=allParamsLong,aes(y=log(value),x=age_years,color=param_pred),geom="point",size=1,shape=)+
+  ##stat_summary(data=allParamsLong,aes(y=log(value),x=age_years,color=param_pred),geom="point",size=1,shape=)+
+  #geom_smooth(aes(y=exp(value),group=name,x=age_years,color=param_pred),size=0.04,alpha=0.0001,fill=NA)+
+  #geom_smooth(aes(y=exp(value),x=age_years,color=param_pred),size=1,fill=NA)+
   stat_summary(fun = mean, aes(y=exp(value),x=age_years,color=param_pred),geom="line",size=1)+
-  #stat_summary(geom="point")+
   coord_cartesian(xlim=c(min(params$age_years),max(params$age_years)))+
   #scale_y_log10(breaks = c(.01, .1, 1.0, 10), labels = c(".01", '0.1', '1.0', '10'))+
   scale_y_log10(labels = dropLeadingZero)+
@@ -417,24 +394,31 @@ posteriorParamPlots
 
 #######Histogram of change point
 
-lambdaHist <- lambdaChange%>%spread_draws(b_alpha_Intercept)%>%rowwise()%>%
-  mutate(hm=inv_logit_scaled(b_alpha_Intercept,lb = 0,ub=20))
+lambdaHist <- multiChange%>%spread_draws(b_lambda_alpha_Intercept)%>%rowwise()%>%
+  mutate(hm=inv_logit_scaled(b_lambda_alpha_Intercept,lb = 5,ub=25))%>%
+  select(-b_lambda_alpha_Intercept)
+
 lambdaHist$param <- 'lambda'
+#when changepoint? uncertainty?
+lambdaHist%>%ungroup()%>%
+  summarize(m=mean(hm),
+            upper_CI=quantile(hm,probs = 0.95),
+            lower_CI=quantile(hm,probs = 0.05))#%>%
 
-lambdaHist%>%ungroup()%>%summarize(m=mean(hm),
-                                   upper_CI=quantile(hm,probs = 0.95),
-                                   lower_CI=quantile(hm,probs = 0.05))
+betaHist <- multiChange%>%spread_draws(b_beta_alpha_Intercept)%>%rowwise()%>%
+  mutate(hm=inv_logit_scaled(b_beta_alpha_Intercept,lb = 5,ub=25))%>%
+  select(-b_beta_alpha_Intercept)
 
-betaHist <- betaChange%>%spread_draws(b_alpha_Intercept)%>%rowwise()%>%
-  mutate(hm=inv_logit_scaled(b_alpha_Intercept,lb = 0,ub=20))
 betaHist$param <- 'beta'
 
 betaHist%>%ungroup()%>%summarize(m=mean(hm),
                                  upper_CI=quantile(hm,probs = 0.95),
                                  lower_CI=quantile(hm,probs = 0.05))
 
-tauHist <- tauChange%>%spread_draws(b_alpha_Intercept)%>%rowwise()%>%
-  mutate(hm=inv_logit_scaled(b_alpha_Intercept,lb = 0,ub=20))
+tauHist <- multiChange%>%spread_draws(b_tau_alpha_Intercept)%>%rowwise()%>%
+  mutate(hm=inv_logit_scaled(b_tau_alpha_Intercept,lb = 5,ub=25))%>%
+  select(-b_tau_alpha_Intercept)
+
 tauHist$param <- 'tau'
 
 tauHist%>%ungroup()%>%summarize(m=mean(hm),
@@ -462,11 +446,13 @@ changeHist
 ParamPlot <- cowplot::plot_grid(posteriorParamPlots+ theme(plot.margin = unit(c(7, 0, 7, 7), "pt")), 
                                 changeHist+ theme(plot.margin = unit(c(-10, 7, 7, 7), "pt")), ncol=1, rel_heights =c(1, .5))
 ParamPlot
+#ggsave(ParamPlot,filename = "CP_Model_revision.png",width = 7,height=4)
+
 
 
 
 #######################################################################################
-#parameter correlations
+# Parameter correlations
 # distance matrix for each age group
 ########################################################################################
 
@@ -610,5 +596,6 @@ bottomRow <- cowplot::plot_grid(ParamPlot, insetSimilarity ,nrow = 1, rel_widths
 fullPlot <- cowplot::plot_grid(plotsTop, bottomRow, ncol = 1, rel_heights = c(1,.7))
 fullPlot
 
-#ggsave('plots/models.png',fullPlot, width = 10, height = 7.5, units = 'in' )
-# ggsave('plots/models.pdf',fullPlot, width = 12, height = 9, units = 'in' )
+#ggsave('plots/models_27_06_2022.png',fullPlot, width = 10, height = 7.5, units = 'in' )
+#ggsave('plots/models_28_06_2022.pdf',fullPlot, width = 12, height = 9, units = 'in' )
+

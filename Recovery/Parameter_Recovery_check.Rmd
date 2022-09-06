@@ -9,7 +9,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load('tidyverse','ggpubr')
+pacman::p_load('tidyverse','ggpubr','gridExtra','grid','reshape')
 
 
 params = read.csv('../data/modelFit.csv')
@@ -310,6 +310,31 @@ joint<-cowplot::plot_grid(subjectRecov,superRecov,nrow=2,labels="auto",hjust=-3,
 allParamRecov<-grid.arrange(arrangeGrob(joint, bottom = x.grob))
 allParamRecov
 ggsave("X_Figures/ParamRecovery.pdf",plot=allParamRecov,width=10.5,height=7)
+```
+
+## Correlation Matrix
+
+```{r}
+ParamNames=c(expression(tau),expression(beta),expression(lambda))
+
+cbind(
+cor(x=corrsSims[c(2,3,4)],y=corrsSims[5]),
+cor(x=corrsSims[c(2,3,4)],y=corrsSims[6]),
+cor(x=corrsSims[c(2,3,4)],y=corrsSims[7])
+)%>%melt()%>%
+  ggplot(aes(X1, X2, fill = value))+
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name=expression(r))+
+  theme_minimal(14)+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+  scale_x_discrete(name="Simulation Parameter",breaks=c("tauSim","betaSim","lambdaSim"),labels=ParamNames)+
+  scale_y_discrete(name="Fitted Parameter",breaks=c("tauCVMean","betaCVMean","lambdaCVMean"),labels=ParamNames)+
+  coord_fixed()+
+  geom_text(aes(X1, X2, label = round(value,2)), color = "black", size = 3.5)
+
+ggsave(filename = "../plots/ParamRecovery2.pdf",width = 4,height = 4)
 ```
 
 

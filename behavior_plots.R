@@ -97,7 +97,7 @@ pReward = ggplot(dReward, aes(x=agegroup, y=meanReward, fill=agegroup, color=age
   xlab('Age Group') +
   ylab('Normalized Mean Reward') +
   scale_color_viridis(discrete=TRUE, direction=-1) +
-  scale_fill_viridis(discrete=TRUE, direction = -1) +
+  scale_fill_viridis(discrete=TRUE, direction=-1) +
   ggtitle('Performance') +
   theme_classic() +
   theme(legend.position='none',

@@ -25,6 +25,7 @@ https://charleywu.github.io/downloads/giron2022developmental.pdf
    (Generates Figure S5)
 -  `hillClimbingAlgorithm.R`, `hillClimbingAlgorithm_tests.R` and `hillClimbingAlgorithm_plots.R`: run optimization algorithms in the parameter space calculated in `simulateModels.R`   
    (generates Figure 4 and S6)
+- `Algo-Human-Permute.R`: compute the changepoint analysis of human and SHC-fast trajectory
    
 ## Model and Parameter Recovery
 - `Recovery/Model_Recovery.Rmd` import, analyze and plot model recovery results generated with `Recovery/Model_Recovery_Cluster.R`, `Recovery/Model_Recovery_Cluster_Meder.R` and `Recovery/Model_Recovery_Cluster_Schulz.R` and saved in `Recovery/modelRecovery/`. Models used for recovery are defined in `fit_parallel_cluster.R`.    

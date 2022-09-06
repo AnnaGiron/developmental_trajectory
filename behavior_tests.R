@@ -74,7 +74,7 @@ d %>%
 # youngest age group better than chance level?
 # age as discrete variable
 dReward = ddply(d, ~id+agegroup+age_months, plyr::summarize, meanReward=mean(z))
-
+shapiro.test(subset(dReward, agegroup=='5-6')$meanReward) # data is normally distributed
 ttestPretty(subset(dReward, agegroup=='5-6')$meanReward, mu=.5)
 
 
@@ -203,7 +203,15 @@ for (i in unique(d$id)) {
 dMeanUniqueOpts = ddply(dUniqueOpts, ~id+age_months+agegroup+age_years, plyr::summarize,
                         mUniqueOpt=mean(nUniqueOpt))
 
-corTestPretty(dMeanUniqueOpts$age_months, dMeanUniqueOpts$mUniqueOpt)
+randomUnique<- mean(sapply(1:10000, FUN=function(i) length(unique(sample(1:64, 25, replace = T)))))
+shapiro.test(subset(dMeanUniqueOpts, agegroup=='5-6')$mUniqueOpt) # not normally distributed
+# subtract amount of unique options that a random model would sample, so it becomes a test against 0
+ranktestPretty(x=subset(dMeanUniqueOpts, agegroup=='5-6')$mUniqueOpt-randomUnique, y=NULL, oneSample=TRUE)
+ranktestPretty(x=subset(dMeanUniqueOpts, agegroup=='5-6')$mUniqueOpt-25, y=NULL, oneSample=TRUE)
+
+
+corTestPretty(dMeanUniqueOpts$age_months, dMeanUniqueOpts$mUniqueOpt, method='kendall')
+
 
 
 # entropy
@@ -254,3 +262,55 @@ tab_model(DistancePrevReward)
 bayes_R2(DistancePrevReward)
 # Estimate   Est.Error      Q2.5     Q97.5
 # R2 0.403919 0.002604367 0.3987298 0.4090274
+
+
+# repeat, near, far search decisions
+# use proportions
+dDecision = ddply(subset(d, !is.na(type_choice)), ~agegroup+id, plyr::summarize,
+                  prob=prop.table(table(type_choice)),
+                  type_choice=names(table(type_choice)))
+
+dDecision = dDecision %>%
+  mutate(type_choice = factor(type_choice, levels=c('Repeat', 'Near', 'Far')))
+
+d5to6 = subset(dDecision, agegroup=='5-6')
+# difference between proportion of repeat choices of youngest age group and random model?
+ranktestPretty(x=subset(d5to6, type_choice=='Repeat')$prob-1/64, y=NULL, oneSample=TRUE)
+# near choices
+ranktestPretty(x=subset(d5to6, type_choice=='Near')$prob-8/64, y=NULL, oneSample=TRUE)
+# difference between repeat and near choices (14-17 year olds)
+d14to17 = subset(dDecision, agegroup=='14-17')
+ranktestPretty(x=subset(d14to17, type_choice=='Repeat')$prob, y=subset(d14to17, type_choice=='Near')$prob, paired=TRUE)
+# 18-24
+d18to24 = subset(dDecision, agegroup=='18-24')
+ranktestPretty(x=subset(d18to24, type_choice=='Repeat')$prob, y=subset(d18to24, type_choice=='Near')$prob, paired=TRUE)
+# 25-55
+d25to55 = subset(dDecision, agegroup=='25-55')
+ranktestPretty(x=subset(d25to55, type_choice=='Repeat')$prob, y=subset(d25to55, type_choice=='Near')$prob, paired=TRUE)
+
+
+################################################################################################
+# Learning over rounds
+################################################################################################
+dLearningCurvesRounds = ddply(d, ~id+round+agegroup, plyr::summarize, meanReward = mean(z))
+
+# hierarchical regression model
+avgRewardRound = run_model(brm(meanReward ~ round * agegroup + (round + agegroup | id),
+                               data = dLearningCurvesRounds, cores = 4, iter = 4000, warmup = 1000,
+                               control = list(adapt_delta = 0.99)), modelName = 'AvgRewardRound')
+
+# compute slopes for each agegroup
+as_draws_df(avgRewardRound) %>% 
+  mutate(slope1 = b_round + `b_round:agegroup5M6`,
+         slope2 = b_round + `b_round:agegroup7M8`,
+         slope3 = b_round + `b_round:agegroup9M10`,
+         slope4 = b_round + `b_round:agegroup11M13`,
+         slope5 = b_round + `b_round:agegroup14M17`,
+         slope6 = b_round + `b_round:agegroup18M24`) %>%
+  summarize(`5-6` = CI(slope1),
+            `7-8` = CI(slope2),
+            `9-10` = CI(slope3),
+            `11-13` = CI(slope4),
+            `14-17` = CI(slope5),
+            `18-24` = CI(slope6),
+            `25-55` = CI(b_round))

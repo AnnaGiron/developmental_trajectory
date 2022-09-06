@@ -26,32 +26,47 @@ ttestPretty <-function(x,y=NULL,mu=0, var.equal=T, paired=F, maxBF = 100){
 }
 
 #Non-parametric tests
-ranktestPretty <-function(x,y, paired=F, maxBF = 100){
-  if (paired==T){ #wilcoxon signed rank test (for paired comparisons) 
-    w <- wilcox.test(x,y , paired=T)
+ranktestPretty <-function(x,y, oneSample = F, paired=F, maxBF = 100){
+  if (oneSample==T){ #one sample wilcoxon signed rank test
+    w <- wilcox.test(x, mu=0)
     z <- sprintf("%.1f",qnorm(w$p.value)) #z-statistic
     p <- pformat(w$p.value) #p-value
     r <- corformat(qnorm(w$p.value)/sqrt(length(x))) #effect size; r value
     #Bayes factor
-    outsim<-signRankGibbsSampler(x, y, progBar = T) #sign rank gibbs sampler 
+    outsim<-signRankGibbsSampler(x, progBar = T) #sign rank gibbs sampler 
     dense<- density(outsim$deltaSamples)
     ddense <- with(dense, approxfun(x, y, rule=1))
     ifelse(is.na(ddense(0)), denominator <- .Machine$double.xmin, denominator <- ddense(0)) #if no density at 0, then default to the smallest number
     BF<-dcauchy(0, location = 0, scale = 1/sqrt(2), log = FALSE)/denominator
     out <- paste0('$Z=', z , '$, $p',p, '$, $r=',r,'$, $BF', bfformat(BF),'$')
-  }else{#Mann whitney U test (for non-paired comparisons)
-    w <- wilcox.test(x,y)
-    U <- sprintf('%.0f',w$statistic) #extract test statistic (no significant digits)
-    p <- pformat(w$p.value) #p-value
-    r <- corformat(cor(c(rep(1,length(x)), rep(0,length(y))), c(x,y), method='kendall')) #rank correlation as effect size, comparing data gainst binary identification vector
-    #Bayes factor
-    outsim<-rankSumGibbsSampler(x, y, progBar = T) #rank sum gibbs sampler 
-    dense<- density(outsim$deltaSamples)
-    ddense <- with(dense, approxfun(x, y, rule=1))
-    ifelse(is.na(ddense(0)), denominator <- .Machine$double.xmin, denominator <- ddense(0)) #if no density at 0, then default to the smallest number
-    BF<-dcauchy(0, location = 0, scale = 1/sqrt(2), log = FALSE)/denominator
-    out <- paste0('$U=', U , '$, $p',p, '$, $r_{\tau}=',r,'$, $BF', bfformat(BF),'$')
+  }else{
+    if (paired==T){ #wilcoxon signed rank test (for paired comparisons) 
+      w <- wilcox.test(x,y , paired=T)
+      z <- sprintf("%.1f",qnorm(w$p.value)) #z-statistic
+      p <- pformat(w$p.value) #p-value
+      r <- corformat(qnorm(w$p.value)/sqrt(length(x))) #effect size; r value
+      #Bayes factor
+      outsim<-signRankGibbsSampler(x, y, progBar = T) #sign rank gibbs sampler 
+      dense<- density(outsim$deltaSamples)
+      ddense <- with(dense, approxfun(x, y, rule=1))
+      ifelse(is.na(ddense(0)), denominator <- .Machine$double.xmin, denominator <- ddense(0)) #if no density at 0, then default to the smallest number
+      BF<-dcauchy(0, location = 0, scale = 1/sqrt(2), log = FALSE)/denominator
+      out <- paste0('$Z=', z , '$, $p',p, '$, $r=',r,'$, $BF', bfformat(BF),'$')
+    }else{#Mann whitney U test (for non-paired comparisons)
+      w <- wilcox.test(x,y)
+      U <- sprintf('%.0f',w$statistic) #extract test statistic (no significant digits)
+      p <- pformat(w$p.value) #p-value
+      r <- corformat(cor(c(rep(1,length(x)), rep(0,length(y))), c(x,y), method='kendall')) #rank correlation as effect size, comparing data gainst binary identification vector
+      #Bayes factor
+      outsim<-rankSumGibbsSampler(x, y, progBar = T) #rank sum gibbs sampler 
+      dense<- density(outsim$deltaSamples)
+      ddense <- with(dense, approxfun(x, y, rule=1))
+      ifelse(is.na(ddense(0)), denominator <- .Machine$double.xmin, denominator <- ddense(0)) #if no density at 0, then default to the smallest number
+      BF<-dcauchy(0, location = 0, scale = 1/sqrt(2), log = FALSE)/denominator
+      out <- paste0('$U=', U , '$, $p',p, '$, $r_{\tau}=',r,'$, $BF', bfformat(BF),'$')
+    }
   }
+  
   return(out)
 }
 
