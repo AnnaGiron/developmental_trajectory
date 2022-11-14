@@ -349,7 +349,7 @@ agegroup = levels(d$agegroup)[7]
 d2 = expand.grid(round=round, agegroup=agegroup)
 # combine
 newdat = rbind(d1, d2)
-# predict distance based on previous resward
+# predict reward of next round based on reward of previous round
 preds = fitted(avgRewardRound, re_formula=NA, newdata=newdat, probs=c(.025, .975))
 predsDF = data.frame(round=newdat$round,
                      agegroup=newdat$agegroup,
