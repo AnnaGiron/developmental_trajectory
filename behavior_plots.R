@@ -329,3 +329,53 @@ plots = cowplot::plot_grid(pReward, pLearningCurves, pLearningCurvesMax, pUnique
                            pDistRewardRegression, ncol=2, labels='auto')
 plots
 # ggsave(filename = "plots/Fig2.pdf", plot=plots, height=8, width=6, units = "in")
+
+
+################################################################################################
+# Learning over rounds
+################################################################################################
+# hierarchical regression model
+avgRewardRound = run_model(brm(meanReward ~ round * agegroup + (round + agegroup | id),
+                               data = dLearningCurvesRounds, cores = 4, iter = 4000, warmup = 1000,
+                               control = list(adapt_delta = 0.99)), modelName = 'AvgRewardRound')
+
+# generate predictions
+round = seq(2,9) # normalized reward
+agegroup = levels(d$agegroup)[1:6]
+d1 = expand.grid(round=round, agegroup=agegroup)
+# agegroup 5-6 only played 4 rounds
+round = seq(2,5)
+agegroup = levels(d$agegroup)[7]
+d2 = expand.grid(round=round, agegroup=agegroup)
+# combine
+newdat = rbind(d1, d2)
+# predict distance based on previous resward
+preds = fitted(avgRewardRound, re_formula=NA, newdata=newdat, probs=c(.025, .975))
+predsDF = data.frame(round=newdat$round,
+                     agegroup=newdat$agegroup,
+                     reward=preds[,1],
+                     lower=preds[,3],
+                     upper=preds[,4])
+
+
+dLearningCurvesRounds$agegroup = factor(dLearningCurvesRounds$agegroup, levels=c("25-55", "18-24", "14-17", "11-13", "9-10", "7-8", "5-6"))
+predsDF$agegroup = factor(predsDF$agegroup, levels=c("25-55", "18-24", "14-17", "11-13", "9-10", "7-8", "5-6"))
+
+# plot predictions
+pAvgRewardRound <- ggplot()+
+  # geom_point(dLearningCurvesRounds, mapping=aes(x=round, y=meanReward, color=agegroup, group=id), alpha=0.7, size=.5)+
+  stat_summary(dLearningCurvesRounds, mapping=aes(x=round, y=meanReward, color=agegroup, fill=agegroup), fun=mean, geom='point', alpha=0.7, size=.5)+
+  geom_line(predsDF, mapping=aes(x=round, y=reward, color=agegroup), size=.8) +
+  geom_ribbon(predsDF, mapping=aes(x=round, y=reward, ymin=lower, ymax=upper, fill=agegroup), alpha=.3) +
+  geom_hline(yintercept=0.5, linetype='dashed', color='red') + # random choice model
+  xlab('Round')+
+  ylab('Normalized Reward')+
+  # scale_x_continuous(limits=c(1.5,9.5), breaks=seq(2,9)) +
+  scale_color_viridis(discrete=TRUE, name='Age Group') +
+  scale_fill_viridis(discrete=TRUE, name='Age Group') +
+  ggtitle('Reward ~ Round') +
+  #facet_wrap(~agegroup, ncol=4) +
+  theme_classic() +
+  theme(strip.background=element_blank())
+
+pAvgRewardRound

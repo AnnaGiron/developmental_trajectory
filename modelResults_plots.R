@@ -5,10 +5,10 @@
 rm(list=ls())
 
 
-#setwd("./Projects/adolescent_grids/")####THIS IS ONLY BC SIMON HAS HIS PROJECT IN HIS FOLDER 
 # load packages
 packages <- c('plyr', 'jsonlite', 'gridExtra', 'reshape2', 'stargazer', 'coefplot', 'cowplot', 'lme4', 'sjPlot',
-              "grid", 'corrplot', 'ggbeeswarm', 'tidyverse', 'viridis', 'colorspace', 'ggrepel', 'pacman', 'tidybayes','brms','philentropy', 'latex2exp')
+              "grid", 'corrplot', 'ggbeeswarm', 'tidyverse', 'viridis', 'colorspace', 'ggrepel', 'pacman', 'tidybayes',
+              'brms','philentropy', 'latex2exp',"survminer")
 lapply(packages, require, character.only = TRUE)
 
 source("dataProcessing.R")
@@ -66,8 +66,6 @@ params%>%ggplot(aes(x=shortname, y=R2, fill=NA,color=shortname)) +
 
 p_R2_comp
 ggsave(filename = 'plots/S2.pdf',p_R2_comp )
-
-
 #############################################################################################################################
 # Plot model fit by age
 #############################################################################################################################
@@ -76,7 +74,8 @@ ggsave(filename = 'plots/S2.pdf',p_R2_comp )
 p_r2_age = ggplot(params, mapping=aes(x=age_months/12, y=R2, color=shortname, fill=shortname)) +
   geom_hline(yintercept = 0, color = 'red', linetype = 'dashed')+
   geom_point(alpha = 0.5, size=.5) +
-  geom_smooth(size=.7) +
+  geom_smooth(size=.7, method = 'lm') +
+  #stat_summary(fun.y = mean, geom='line')+
   xlab("Age (Years) [logscale]") +
   ylab(expression(R^2)) +
   #facet_grid(experiment~., scales = 'free')+
@@ -145,7 +144,7 @@ p_pxp_all = ggplot(pxp, aes(x=ModelName, y=pxp, fill=agegroup)) +
   geom_bar(stat='identity', position="dodge2", color = 'black') +
   xlab('') +
   ylab(expression(italic(pxp))) +
-  scale_fill_manual(values=rev(c('black',"#440154FF", "#443A83FF", "#31688EFF" ,"#21908CFF", "#35B779FF", "#8FD744FF", "#FDE725FF")), name = 'Age Group') +
+  scale_fill_manual(values=rev(c('black',"#440154FF", "#443A83FF", "#31688EFF" ,"#21908CFF", "#35B779FF", "#8FD744FF", "#FDE725FF")), name = '') +
   scale_x_discrete(labels =xlabels)+
   ggtitle("Bayesian Model Selection") +
   theme_classic() +
@@ -153,6 +152,8 @@ p_pxp_all = ggplot(pxp, aes(x=ModelName, y=pxp, fill=agegroup)) +
   )
 
 p_pxp_all
+
+
 
 
 #############################################################################################################################
@@ -253,9 +254,11 @@ p_LearningCurves
 #                     plot.background = element_rect(fill = "transparent",colour = NA)), .35, .2, .65, .8)
 # insetted
 
-p_ab <- cowplot::plot_grid(p_pxp_all, p_r2_age,labels = 'auto', ncol = 1)
-plotsTop = cowplot::plot_grid(p_ab,p_LearningCurves, ncol=2, rel_widths = c(1, 1.2), labels = c('', 'c'))
+p_ab <- cowplot::plot_grid(p_pxp_all, p_r2_age,labels = c('b','c'), ncol = 1)
+plotsTop = cowplot::plot_grid(p_ab,p_LearningCurves, ncol=2, rel_widths = c(1, 1.2), labels = c('', 'd'))
 plotsTop
+
+
 
 
 
@@ -312,7 +315,6 @@ cpmodelparams<-params%>%mutate(
 
 multiChange<-run_model(brm(bform, data = cpmodelparams,prior = bprior,cores=4,iter=4000,control=list(adapt_delta=0.99)),path = "brms_modelfits/multi_Change")
 
-
 #######################################
 # Plot change models
 #######################################
@@ -330,6 +332,12 @@ betaParams<-  params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(
 #third is tau
 tauParams<- params%>% filter(ModelName=='GP-UCB')%>%cbind(t(posterior_predict(multiChange,newdata=params,nsamples = 400)[,,3]))%>%
   pivot_longer(-colnames(params_old))
+
+
+#SC: multivariate CP model make results have the same shape as before
+
+
+
 
 #SC: Here the actual model predictions have been thrown away before but we need to keep them if we want to plot them
 allParams<-lambdaParams%>%magrittr::set_colnames(value = c(colnames(lambdaParams)[1:length(colnames(lambdaParams))-1],"lambda_pred"))
@@ -446,13 +454,12 @@ changeHist
 ParamPlot <- cowplot::plot_grid(posteriorParamPlots+ theme(plot.margin = unit(c(7, 0, 7, 7), "pt")), 
                                 changeHist+ theme(plot.margin = unit(c(-10, 7, 7, 7), "pt")), ncol=1, rel_heights =c(1, .5))
 ParamPlot
-#ggsave(ParamPlot,filename = "CP_Model_revision.png",width = 7,height=4)
-
+ggsave(ParamPlot,filename = "CP_Model_revision.png",width = 7,height=4)
 
 
 
 #######################################################################################
-# Parameter correlations
+#parameter correlations
 # distance matrix for each age group
 ########################################################################################
 
@@ -591,11 +598,9 @@ insetSimilarity
 #Create final plot
 ##########################
 
-bottomRow <- cowplot::plot_grid(ParamPlot, insetSimilarity ,nrow = 1, rel_widths = c( 1,.7), labels=c('d','e'))
+bottomRow <- cowplot::plot_grid(ParamPlot, insetSimilarity ,nrow = 1, rel_widths = c( 1,.7), labels=c('e','f'))
 
-fullPlot <- cowplot::plot_grid(plotsTop, bottomRow, ncol = 1, rel_heights = c(1,.7))
+fullPlot <- cowplot::plot_grid(plotsTop, bottomRow, ncol = 1, rel_heights = c(1,.8))
 fullPlot
 
-#ggsave('plots/models_27_06_2022.png',fullPlot, width = 10, height = 7.5, units = 'in' )
-#ggsave('plots/models_28_06_2022.pdf',fullPlot, width = 12, height = 9, units = 'in' )
-
+ggsave('plots/models.pdf',fullPlot, width = 12, height = 7.5, units = 'in' )
