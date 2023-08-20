@@ -1,6 +1,13 @@
 # developmental_trajectory
+
+## Open Access Journal Article:
+https://www.nature.com/articles/s41562-023-01662-1
+
+### Cite as:
+Giron, A.P., Ciranka, S., Schulz, E. et al. Developmental changes in exploration resemble stochastic optimization. Nat Hum Behav (2023). https://doi.org/10.1038/s41562-023-01662-1
+
 ## Preprint:
-https://charleywu.github.io/downloads/giron2022developmental.pdf
+https://charleywu.github.io/downloads/giron2023developmental.pdf
 
 ## Datasets:    
 - `data/behavioralData.csv`: behavioral data of all 281 participants   
